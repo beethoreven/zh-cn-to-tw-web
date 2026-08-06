@@ -1,0 +1,432 @@
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #f7f6f3;
+  --card: #ffffff;
+  --border: #ddd8cf;
+  --accent: #8a3324;
+  --muted: #6b6b6b;
+  --card-shadow: 0 2px 6px rgba(26, 20, 15, 0.06), 0 8px 24px rgba(26, 20, 15, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #ece7de;
+    --bg: #1c1a17;
+    --card: #262320;
+    --border: #3a352e;
+    --accent: #d98a70;
+    --muted: #9c968a;
+    --card-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "PingFang TC", "Microsoft JhengHei", -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+}
+
+.page-layout {
+  display: flex;
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.sidebar-column {
+  flex: 0 1 260px;
+  min-width: 220px;
+  display: flex;
+}
+
+.sidebar-column .notice-box {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+.main-column {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.columns {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  .page-layout {
+    flex-direction: column;
+  }
+
+  .sidebar-column {
+    flex: initial;
+    min-width: 0;
+  }
+
+  .columns {
+    flex-direction: column;
+  }
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+.upload-box,
+.status-box,
+.usage-box,
+.review-box,
+.notice-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--card-shadow);
+}
+
+.notice-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--fg);
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.upload-box,
+.review-box {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.field select,
+.field input {
+  padding: 0.5rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+.field-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.usage-box h2,
+.upload-box h2,
+.status-box h2,
+.review-box h2 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.usage-box h2:not(:first-child) {
+  margin-top: 1.5rem;
+}
+
+.usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.usage-row-warning {
+  color: #c0392b;
+  font-weight: 600;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#log-list,
+#review-log-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+#log-list li,
+#review-log-list li {
+  padding: 0.3rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+#log-list li.warning,
+#review-log-list li.warning {
+  color: #b8860b;
+}
+
+#log-list li.error,
+#review-log-list li.error {
+  color: #c0392b;
+}
+
+.findings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.findings-toolbar button {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+#findings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.finding-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+}
+
+.finding-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.finding-checkbox-row input {
+  margin-top: 0.2rem;
+}
+
+.finding-diff {
+  line-height: 1.6;
+}
+
+.finding-original {
+  color: #c0392b;
+  text-decoration: line-through;
+}
+
+.finding-suggested {
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.finding-context,
+.finding-reason {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.switch-with-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.switch-label-text {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 400;
+  width: 2.6rem;
+  flex: 0 0 auto;
+}
+
+.switch-label-text:first-child {
+  text-align: right;
+}
+
+.switch-label-text:last-child {
+  text-align: left;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.switch-track::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: var(--card);
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch-track::before {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.findings-scroll-wrap {
+  position: relative;
+}
+
+.direct-upload-field {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: opacity 0.15s ease;
+}
+
+.direct-upload-field.locked {
+  opacity: 0.5;
+}
+
+.direct-upload-field button {
+  margin-top: 0.5rem;
+}
+
+#stage1-form-group,
+#stage2-locked-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  transition: opacity 0.15s ease;
+}
+
+#stage1-form-group.locked,
+#stage2-locked-group.locked {
+  opacity: 0.5;
+}
+
+.scroll-hint {
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  line-height: 1;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+/* .scroll-hint 的 `display: flex` 特異度跟瀏覽器內建的 [hidden] 規則
+   一樣，我們自己的規則會贏，導致 JS 設定 hidden=true 後畫面不會真的
+   消失。這條規則特異度更高，確保 hidden 屬性真的能蓋掉 display:flex */
+.scroll-hint[hidden] {
+  display: none;
+}
