@@ -1,5 +1,16 @@
 const API_BASE = "https://zh-cn-to-tw-backend.onrender.com";
 
+// Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
+// 無法保證真的每 10 分鐘執行(GitHub 自己的 schedule 觸發時間常常延遲數小時),
+// 所以只要這個分頁還開著,就自己每 5 分鐘打一次 /api/health,確保使用中途
+// 不會被 Render 判定閒置——不需要登入,/api/health 本來就是為了這個用途設計的公開端點。
+// 一開始就先打一次(不等第一個 5 分鐘),盡量提早把可能還在睡的後端叫醒。
+function pingKeepAlive() {
+  fetch(`${API_BASE}/api/health`).catch(() => {});
+}
+pingKeepAlive();
+setInterval(pingKeepAlive, 5 * 60 * 1000);
+
 const fileInput = document.getElementById("file-input");
 const submitBtn = document.getElementById("submit-btn");
 const statusBox = document.getElementById("status-box");
