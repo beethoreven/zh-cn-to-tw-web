@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5001";
+const API_BASE = "https://zh-cn-to-tw-backend.onrender.com";
 
 const fileInput = document.getElementById("file-input");
 const submitBtn = document.getElementById("submit-btn");
