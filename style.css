@@ -126,7 +126,7 @@ body {
 }
 
 .admin-select-row .field {
-  flex: 1 1 240px;
+  flex: 0 1 260px;
   min-width: 200px;
 }
 
@@ -438,6 +438,14 @@ h1 {
   margin-top: 1.5rem;
 }
 
+/* 「本案使用Claude token狀況」的 h2 包在 #project-usage-block 這個
+   獨立的 div 裡，是它自己那層的第一個子元素，上面的
+   `h2:not(:first-child)` 規則（判斷基準是各自的父層，不是整個
+   .usage-box）不會套用到它，要在外層 wrapper 自己補上同樣的間距 */
+#project-usage-block {
+  margin-top: 1.5rem;
+}
+
 .usage-list {
   display: flex;
   flex-direction: column;
@@ -458,7 +466,7 @@ h1 {
 }
 
 .project-picker-row select {
-  flex: 1 1 auto;
+  flex: 0 1 260px;
   padding: 0.5rem 0.6rem;
   border-radius: 8px;
   border: 1px solid var(--border);
