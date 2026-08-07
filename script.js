@@ -11,6 +11,207 @@ function pingKeepAlive() {
 pingKeepAlive();
 setInterval(pingKeepAlive, 5 * 60 * 1000);
 
+// ===== Google 登入 =====
+//
+// 跟 fireless-war-web 同樣的驗證方式（Google Identity Services + 後端
+// 白名單），但這裡刻意多做一件事：把 ID Token 存進 localStorage，不是
+// 只放在 JS 變數裡。localStorage 天生同網域跨分頁共用、重新整理不會
+// 消失，只有明確登出（removeItem）或使用者自己清瀏覽器資料才會不見，
+// 這樣才符合「重新整理不會登出、另開分頁也在登入狀態、只有登出才清除」
+// 的需求。fireless-war-web 沒存 token，靠的是 Google 自己的靜默登入
+// (prompt) 嘗試恢復，但那個機制常被瀏覽器的第三方 cookie 限制擋掉，
+// 不可靠。
+
+const GOOGLE_CLIENT_ID = "415031055130-73moi9aantfm5hjojmt1r0isk2uo35mr.apps.googleusercontent.com";
+const ID_TOKEN_STORAGE_KEY = "ztw_id_token";
+
+const containerEl = document.querySelector(".container");
+const googleSigninBtnEl = document.getElementById("google-signin-button");
+const accountSlotEl = document.getElementById("account-slot");
+const accountLabelEl = document.getElementById("account-label");
+const accountDropdownEl = document.getElementById("account-dropdown");
+const btnSignOut = document.getElementById("btn-sign-out");
+const toastEl = document.getElementById("toast");
+
+let currentIdToken = localStorage.getItem(ID_TOKEN_STORAGE_KEY);
+let currentAuthorized = false;
+let toastTimer = null;
+let appDataLoaded = false; // Stage 1/2 的選項、使用量等資料只需要在授權後載入一次
+
+function showToast(message, type) {
+  clearTimeout(toastTimer);
+  toastEl.textContent = message;
+  toastEl.className = "toast visible" + (type ? ` toast--${type}` : "");
+  toastTimer = setTimeout(() => {
+    toastEl.classList.remove("visible");
+  }, 3500);
+}
+
+function authHeaders() {
+  return currentIdToken ? { Authorization: `Bearer ${currentIdToken}` } : {};
+}
+
+// 除了 /api/health（keep-alive 用，刻意不需要登入）以外，其餘所有打
+// 後端的 fetch 都要透過這支，自動帶上登入憑證——後端每一支保護路由
+// 都會驗證這個 token，前端這裡只是負責把它附上去。
+function authedFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}), ...authHeaders() };
+  return fetch(url, { ...options, headers });
+}
+
+// 沒登入或未授權時，把整頁內容都鎖住（含純顯示的區塊，例如使用量統計、
+// 阿舍老師的叮嚀）——這只是視覺提示，devtools 拔掉也沒用，真正擋掉
+// 未授權存取的是後端每支 API 自己驗證 token。
+function setPageLocked(locked) {
+  containerEl.classList.toggle("page-locked", locked);
+}
+
+function showSignedOutUI() {
+  currentIdToken = null;
+  currentAuthorized = false;
+  localStorage.removeItem(ID_TOKEN_STORAGE_KEY);
+  googleSigninBtnEl.hidden = false;
+  accountSlotEl.hidden = true;
+  accountDropdownEl.hidden = true;
+  setPageLocked(true);
+}
+
+function showSignedInUI(email) {
+  googleSigninBtnEl.hidden = true;
+  accountSlotEl.hidden = false;
+  accountLabelEl.textContent = email ? email.split("@")[0] : "帳號";
+}
+
+async function checkAuthStatus() {
+  if (!currentIdToken) {
+    setPageLocked(true);
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/auth/status`, { headers: authHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 200) {
+      currentAuthorized = !!data.authorized;
+      showSignedInUI(data.email);
+      if (!currentAuthorized) {
+        setPageLocked(true);
+        showToast("此帳號尚未獲得授權", "error");
+      } else {
+        setPageLocked(false);
+        if (!appDataLoaded) {
+          appDataLoaded = true;
+          loadTeacherNotice();
+          loadOptions();
+          loadReviewOptions();
+          loadUsage();
+          loadMonthlyUsage();
+        }
+      }
+    } else {
+      // token 過期或無效，視同沒登入，回到登入前的狀態
+      showSignedOutUI();
+      showToast("登入已過期，請重新登入", "error");
+    }
+  } catch (err) {
+    currentAuthorized = false;
+    setPageLocked(true);
+  }
+}
+
+function handleCredentialResponse(response) {
+  currentIdToken = response.credential;
+  localStorage.setItem(ID_TOKEN_STORAGE_KEY, currentIdToken);
+  checkAuthStatus();
+}
+
+function initGoogleSignIn() {
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleCredentialResponse,
+    auto_select: true,
+  });
+  google.accounts.id.renderButton(googleSigninBtnEl, {
+    theme: "outline",
+    size: "medium",
+    shape: "pill",
+    text: "signin",
+  });
+
+  if (currentIdToken) {
+    // localStorage 裡已經有存起來的 token，直接拿去問後端還有沒有效，
+    // 不用等 Google 的靜默登入——這就是跟 fireless-war-web 不同、
+    // 「重新整理/開新分頁不會登出」的關鍵
+    checkAuthStatus();
+  } else {
+    setPageLocked(true);
+    // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；
+    // 不保證成功（可能被第三方 cookie 限制擋掉），失敗就維持鎖住，
+    // 使用者自己按登入按鈕即可
+    google.accounts.id.prompt();
+  }
+}
+
+initGoogleSignIn();
+
+// ID Token 大約 1 小時過期，但使用者可能開著分頁很久，每 45 分鐘嘗試
+// 一次靜默重新登入，成功的話 handleCredentialResponse 會自動把新 token
+// 存回 localStorage，盡量不要讓使用者用到一半突然被登出
+setInterval(() => {
+  if (currentIdToken) {
+    google.accounts.id.prompt();
+  }
+}, 45 * 60 * 1000);
+
+accountSlotEl.addEventListener("click", () => {
+  accountDropdownEl.hidden = !accountDropdownEl.hidden;
+});
+
+document.addEventListener("click", (e) => {
+  if (!accountSlotEl.contains(e.target)) {
+    accountDropdownEl.hidden = true;
+  }
+});
+
+btnSignOut.addEventListener("click", (e) => {
+  // 這個按鈕包在 account-slot 裡面，點擊事件會往上冒泡觸發
+  // account-slot 自己的「切換下拉選單開關」監聽器，把 showSignedOutUI()
+  // 剛關好的下拉選單狀態又扳回開啟——擋掉冒泡，避免這個互相打架
+  e.stopPropagation();
+  google.accounts.id.disableAutoSelect();
+  showSignedOutUI();
+});
+
+function filenameFromContentDisposition(header, fallback) {
+  if (!header) return fallback;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  return match ? decodeURIComponent(match[1]) : fallback;
+}
+
+// 下載端點需要帶登入憑證，不能像以前那樣直接用 <a href> 導覽（那樣
+// 沒辦法附加 Authorization header）——改成用 fetch 把檔案內容抓成
+// blob，再組一個暫時的下載連結，檔名從後端回傳的 Content-Disposition
+// header 還原（後端 CORS 設定裡有把這個 header 明確曝露給前端 JS）。
+async function downloadViaAuthedFetch(url, fallbackFilename) {
+  const res = await authedFetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "下載失敗");
+  }
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(
+    res.headers.get("Content-Disposition"),
+    fallbackFilename
+  );
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 const fileInput = document.getElementById("file-input");
 const submitBtn = document.getElementById("submit-btn");
 const statusBox = document.getElementById("status-box");
@@ -101,7 +302,7 @@ function validateBoundedInput(input, fieldLabel) {
 async function loadTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
   try {
-    const res = await fetch(`${API_BASE}/api/teacher-notice`);
+    const res = await authedFetch(`${API_BASE}/api/teacher-notice`);
     const data = await res.json();
     teacherNoticeText.textContent = data.text || "（目前沒有內容）";
   } catch (e) {
@@ -110,7 +311,7 @@ async function loadTeacherNotice() {
 }
 
 async function loadOptions() {
-  const res = await fetch(`${API_BASE}/api/options`);
+  const res = await authedFetch(`${API_BASE}/api/options`);
   const opts = await res.json();
 
   modelSelect.innerHTML = "";
@@ -142,10 +343,10 @@ async function loadOptions() {
 }
 
 async function loadUsage() {
-  const res = await fetch(`${API_BASE}/api/usage`);
+  const res = await authedFetch(`${API_BASE}/api/usage`);
   const usage = await res.json();
 
-  const opts = await (await fetch(`${API_BASE}/api/options`)).json();
+  const opts = await (await authedFetch(`${API_BASE}/api/options`)).json();
 
   usageList.innerHTML = "";
   for (const [model, info] of Object.entries(usage)) {
@@ -163,10 +364,10 @@ async function loadUsage() {
 }
 
 async function loadMonthlyUsage() {
-  const res = await fetch(`${API_BASE}/api/usage/monthly`);
+  const res = await authedFetch(`${API_BASE}/api/usage/monthly`);
   const data = await res.json();
 
-  const reviewOpts = await (await fetch(`${API_BASE}/api/review-options`)).json();
+  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
 
   monthlyUsageList.innerHTML = "";
   for (const [model, info] of Object.entries(data.models)) {
@@ -219,7 +420,7 @@ submitBtn.addEventListener("click", async () => {
   statusText.textContent = "上傳中";
 
   try {
-    const res = await fetch(`${API_BASE}/api/jobs`, {
+    const res = await authedFetch(`${API_BASE}/api/jobs`, {
       method: "POST",
       body: formData,
     });
@@ -240,7 +441,7 @@ function pollJob(jobId) {
   pollTimer = setInterval(async () => {
     let res, job;
     try {
-      res = await fetch(`${API_BASE}/api/jobs/${jobId}`);
+      res = await authedFetch(`${API_BASE}/api/jobs/${jobId}`);
       job = await res.json();
     } catch (e) {
       // 網路暫時性錯誤，下一輪再試，不要整個停掉
@@ -281,16 +482,15 @@ function pollJob(jobId) {
   }, 1500);
 }
 
-downloadBtn.addEventListener("click", () => {
+downloadBtn.addEventListener("click", async () => {
   if (!currentJobId) return;
   const format = docxToggle.checked ? "docx" : "txt";
   const url = `${API_BASE}/api/jobs/${currentJobId}/download?format=${format}`;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  try {
+    await downloadViaAuthedFetch(url, `download.${format}`);
+  } catch (e) {
+    showToast(e.message, "error");
+  }
 });
 
 function renderNewLogs(logs) {
@@ -310,7 +510,7 @@ function renderNewLogs(logs) {
 // --- Stage 2：校對 ---
 
 async function loadReviewOptions() {
-  const res = await fetch(`${API_BASE}/api/review-options`);
+  const res = await authedFetch(`${API_BASE}/api/review-options`);
   const opts = await res.json();
 
   reviewModelSelect.innerHTML = "";
@@ -422,7 +622,7 @@ directUploadBtn.addEventListener("click", async () => {
   formData.append("file", file);
 
   try {
-    const res = await fetch(`${API_BASE}/api/jobs/direct-upload`, {
+    const res = await authedFetch(`${API_BASE}/api/jobs/direct-upload`, {
       method: "POST",
       body: formData,
     });
@@ -477,7 +677,7 @@ async function runReview() {
   resetReviewUI();
 
   try {
-    const res = await fetch(`${API_BASE}/api/jobs/${currentJobId}/review`, {
+    const res = await authedFetch(`${API_BASE}/api/jobs/${currentJobId}/review`, {
       method: "POST",
       body: formData,
     });
@@ -499,7 +699,7 @@ function pollReview(reviewId) {
   reviewPollTimer = setInterval(async () => {
     let res, review;
     try {
-      res = await fetch(`${API_BASE}/api/reviews/${reviewId}`);
+      res = await authedFetch(`${API_BASE}/api/reviews/${reviewId}`);
       review = await res.json();
     } catch (e) {
       return;
@@ -606,7 +806,7 @@ applyBtn.addEventListener("click", async () => {
 
   applyBtn.disabled = true;
   try {
-    const res = await fetch(`${API_BASE}/api/reviews/${currentReviewId}/apply`, {
+    const res = await authedFetch(`${API_BASE}/api/reviews/${currentReviewId}/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ selected_ids: selectedIds }),
@@ -625,16 +825,15 @@ applyBtn.addEventListener("click", async () => {
   }
 });
 
-reviewDownloadBtn.addEventListener("click", () => {
+reviewDownloadBtn.addEventListener("click", async () => {
   if (!currentReviewId) return;
   const format = reviewDocxToggle.checked ? "docx" : "txt";
   const url = `${API_BASE}/api/reviews/${currentReviewId}/download?format=${format}`;
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  try {
+    await downloadViaAuthedFetch(url, `download.${format}`);
+  } catch (e) {
+    showToast(e.message, "error");
+  }
 });
 
 rerunBtn.addEventListener("click", async () => {
@@ -650,7 +849,7 @@ rerunBtn.addEventListener("click", async () => {
   resetReviewUI();
 
   try {
-    const res = await fetch(`${API_BASE}/api/reviews/${currentReviewId}/rerun`, {
+    const res = await authedFetch(`${API_BASE}/api/reviews/${currentReviewId}/rerun`, {
       method: "POST",
       body: formData,
     });
@@ -669,8 +868,7 @@ rerunBtn.addEventListener("click", async () => {
 });
 
 refreshLockStates();
-loadTeacherNotice();
-loadOptions();
-loadReviewOptions();
-loadUsage();
-loadMonthlyUsage();
+// 注意：loadTeacherNotice/loadOptions/loadReviewOptions/loadUsage/
+// loadMonthlyUsage 不在這裡無條件呼叫——這些都是受保護的 API，沒登入
+// 會直接 401。改成在 checkAuthStatus() 確認授權成功後才觸發（見上方
+// 「Google 登入」區塊），避免頁面一載入就打一堆註定失敗的請求。

@@ -5,8 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>劇本殺繁化助手</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
+  <header class="top-bar" id="top-bar">
+    <div id="google-signin-button" class="google-signin-btn"></div>
+    <div class="account-slot" id="account-slot" hidden>
+      <span class="account-slot__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>
+        </svg>
+      </span>
+      <span class="account-slot__label" id="account-label">帳號</span>
+      <div class="account-dropdown" id="account-dropdown" hidden>
+        <button type="button" class="account-dropdown__item" id="btn-sign-out">登出</button>
+      </div>
+    </div>
+  </header>
+
   <main class="container">
     <h1>劇本殺繁化助手</h1>
     <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 潤飾</p>
@@ -217,6 +234,8 @@
       </div>
     </div>
   </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="script.js"></script>
 </body>

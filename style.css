@@ -32,10 +32,143 @@ body {
   color: var(--fg);
 }
 
+.top-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px 24px;
+}
+
+.google-signin-btn {
+  line-height: 0;
+}
+
+.account-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  max-width: 220px;
+  background: var(--card);
+}
+
+/* 跟 .account-dropdown 同一個坑：display:flex 特異度跟 [hidden] 打平，
+   我們的規則會贏，要明確蓋掉才能讓 hidden 屬性真的生效 */
+.account-slot[hidden] {
+  display: none;
+}
+
+.account-slot:hover {
+  border-color: var(--accent);
+}
+
+.account-slot__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-slot__icon {
+  display: inline-flex;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  display: inline-block;
+  width: max-content;
+  box-shadow: var(--card-shadow);
+  z-index: 60;
+}
+
+/* .account-dropdown 的 display:inline-block 特異度跟瀏覽器內建的
+   [hidden] 規則一樣，我們自己的規則會贏，導致 JS 設定 hidden=true 後
+   畫面不會真的消失（跟 .scroll-hint 那次是同一個坑）。這條規則特異度
+   更高，確保 hidden 屬性真的能蓋掉 display:inline-block */
+.account-dropdown[hidden] {
+  display: none;
+}
+
+.account-dropdown__item {
+  display: block;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 0.85rem;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.account-dropdown__item:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.toast {
+  position: fixed;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  white-space: nowrap;
+  max-width: calc(100vw - 48px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--card-shadow);
+  z-index: 100;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.toast.toast--error {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.toast.toast--success {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
 .container {
   max-width: 1180px;
   margin: 0 auto;
   padding: 2.5rem 1.5rem;
+}
+
+/* 沒登入或未授權時，整頁內容鎖住——這只是給使用者看的視覺提示，
+   真正擋掉未授權存取的是後端每支 API 自己驗證 token，這裡就算被
+   devtools 拔掉也不影響安全性 */
+.container.page-locked {
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
 }
 
 .page-layout {
