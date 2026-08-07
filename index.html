@@ -9,6 +9,7 @@
 </head>
 <body>
   <header class="top-bar" id="top-bar">
+    <button type="button" id="admin-toggle-btn" class="admin-toggle-btn" hidden>管理員介面</button>
     <div id="google-signin-button" class="google-signin-btn"></div>
     <div class="account-slot" id="account-slot" hidden>
       <span class="account-slot__icon" aria-hidden="true">
@@ -233,6 +234,133 @@
         </div>
       </div>
     </div>
+  </main>
+
+  <main class="admin-container" id="admin-container" hidden>
+    <h1>管理員介面</h1>
+
+    <div class="admin-tabs">
+      <button type="button" class="admin-tab-btn active" data-tab="users">使用者管理</button>
+      <button type="button" class="admin-tab-btn" data-tab="permissions">權限管理</button>
+      <button type="button" class="admin-tab-btn" data-tab="projects">專案管理</button>
+    </div>
+
+    <!-- 使用者管理 -->
+    <section class="admin-panel" id="admin-panel-users">
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-user-select">管理成員</label>
+          <select id="admin-user-select"></select>
+        </div>
+        <button type="button" id="admin-user-load-btn">讀取</button>
+        <button type="button" id="admin-user-edit-btn" disabled>編輯</button>
+        <button type="button" id="admin-user-new-btn">新建</button>
+      </div>
+
+      <div class="admin-fields" id="admin-user-fields" hidden>
+        <div class="field" id="admin-user-id-field">
+          <label for="admin-user-id">ID</label>
+          <input type="text" id="admin-user-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-email">信箱</label>
+          <input type="text" id="admin-user-email" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-name">姓名</label>
+          <input type="text" id="admin-user-name" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-role">權限</label>
+          <select id="admin-user-role" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-user-status">狀態</label>
+          <select id="admin-user-status" disabled>
+            <option value="active">active</option>
+            <option value="deactive">deactive</option>
+          </select>
+        </div>
+        <div class="admin-fields-actions" id="admin-user-create-actions" hidden>
+          <button type="button" id="admin-user-create-submit-btn">建立</button>
+          <button type="button" id="admin-user-create-cancel-btn">取消</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 權限管理 -->
+    <section class="admin-panel" id="admin-panel-permissions" hidden>
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-permission-select">選擇權限</label>
+          <select id="admin-permission-select"></select>
+        </div>
+        <button type="button" id="admin-permission-load-btn">讀取</button>
+        <button type="button" id="admin-permission-edit-btn" disabled>編輯</button>
+      </div>
+
+      <div class="admin-fields" id="admin-permission-fields" hidden>
+        <div class="field">
+          <label for="admin-permission-id">ID</label>
+          <input type="text" id="admin-permission-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-permission-role">權限</label>
+          <select id="admin-permission-role" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-permission-opus">Opus 使用上限</label>
+          <input type="number" id="admin-permission-opus" disabled min="0" />
+        </div>
+        <div class="field">
+          <label for="admin-permission-haiku">Haiku 使用上限</label>
+          <input type="number" id="admin-permission-haiku" disabled min="0" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 專案管理 -->
+    <section class="admin-panel" id="admin-panel-projects" hidden>
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-project-select">選擇專案</label>
+          <select id="admin-project-select"></select>
+        </div>
+        <button type="button" id="admin-project-load-btn">讀取</button>
+        <button type="button" id="admin-project-edit-btn" disabled>編輯</button>
+        <button type="button" id="admin-project-new-btn">新建</button>
+      </div>
+
+      <div class="admin-fields" id="admin-project-fields" hidden>
+        <div class="field" id="admin-project-id-field">
+          <label for="admin-project-id">ID</label>
+          <input type="text" id="admin-project-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-project-name">名稱</label>
+          <input type="text" id="admin-project-name" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-project-owner">負責人</label>
+          <select id="admin-project-owner" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-project-status">狀態</label>
+          <select id="admin-project-status" disabled>
+            <option value="pending">pending</option>
+            <option value="ongoing">ongoing</option>
+            <option value="delayed">delayed</option>
+            <option value="done_not_paid">done_not_paid</option>
+            <option value="paid">paid</option>
+            <option value="closed">closed</option>
+          </select>
+        </div>
+        <div class="admin-fields-actions" id="admin-project-create-actions" hidden>
+          <button type="button" id="admin-project-create-submit-btn">建立</button>
+          <button type="button" id="admin-project-create-cancel-btn">取消</button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

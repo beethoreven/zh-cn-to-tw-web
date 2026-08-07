@@ -26,6 +26,8 @@ const GOOGLE_CLIENT_ID = "415031055130-73moi9aantfm5hjojmt1r0isk2uo35mr.apps.goo
 const ID_TOKEN_STORAGE_KEY = "ztw_id_token";
 
 const containerEl = document.querySelector(".container");
+const adminContainerEl = document.getElementById("admin-container");
+const adminToggleBtnEl = document.getElementById("admin-toggle-btn");
 const googleSigninBtnEl = document.getElementById("google-signin-button");
 const accountSlotEl = document.getElementById("account-slot");
 const accountLabelEl = document.getElementById("account-label");
@@ -35,8 +37,11 @@ const toastEl = document.getElementById("toast");
 
 let currentIdToken = localStorage.getItem(ID_TOKEN_STORAGE_KEY);
 let currentAuthorized = false;
+let currentIsAdmin = false;
+let showingAdminView = false;
 let toastTimer = null;
 let appDataLoaded = false; // Stage 1/2 的選項、使用量等資料只需要在授權後載入一次
+let adminDataLoaded = false; // 管理員介面的下拉選單資料只需要在第一次打開時載入一次
 
 function showToast(message, type) {
   clearTimeout(toastTimer);
@@ -66,13 +71,43 @@ function setPageLocked(locked) {
   containerEl.classList.toggle("page-locked", locked);
 }
 
+// 主介面／管理員介面二選一顯示，同一個按鈕在兩邊切換文字跟功能
+function showMainView() {
+  showingAdminView = false;
+  containerEl.hidden = false;
+  adminContainerEl.hidden = true;
+  adminToggleBtnEl.textContent = "管理員介面";
+}
+
+function showAdminView() {
+  showingAdminView = true;
+  containerEl.hidden = true;
+  adminContainerEl.hidden = false;
+  adminToggleBtnEl.textContent = "使用者介面";
+  if (!adminDataLoaded) {
+    adminDataLoaded = true;
+    initAdminPanels();
+  }
+}
+
+adminToggleBtnEl.addEventListener("click", () => {
+  if (showingAdminView) {
+    showMainView();
+  } else {
+    showAdminView();
+  }
+});
+
 function showSignedOutUI() {
   currentIdToken = null;
   currentAuthorized = false;
+  currentIsAdmin = false;
   localStorage.removeItem(ID_TOKEN_STORAGE_KEY);
   googleSigninBtnEl.hidden = false;
   accountSlotEl.hidden = true;
   accountDropdownEl.hidden = true;
+  adminToggleBtnEl.hidden = true;
+  showMainView();
   setPageLocked(true);
 }
 
@@ -93,6 +128,8 @@ async function checkAuthStatus() {
     console.log("[auth] /auth/status →", res.status, data);
     if (res.status === 200) {
       currentAuthorized = !!data.authorized;
+      currentIsAdmin = !!data.is_admin;
+      adminToggleBtnEl.hidden = !currentIsAdmin;
       showSignedInUI(data.email);
       if (!currentAuthorized) {
         setPageLocked(true);
@@ -878,3 +915,427 @@ refreshLockStates();
 // loadMonthlyUsage 不在這裡無條件呼叫——這些都是受保護的 API，沒登入
 // 會直接 401。改成在 checkAuthStatus() 確認授權成功後才觸發（見上方
 // 「Google 登入」區塊），避免頁面一載入就打一堆註定失敗的請求。
+
+// ===== 管理員介面 =====
+
+const adminTabBtns = document.querySelectorAll(".admin-tab-btn");
+const adminPanels = {
+  users: document.getElementById("admin-panel-users"),
+  permissions: document.getElementById("admin-panel-permissions"),
+  projects: document.getElementById("admin-panel-projects"),
+};
+
+adminTabBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    adminTabBtns.forEach((b) => b.classList.toggle("active", b === btn));
+    for (const [key, panel] of Object.entries(adminPanels)) {
+      panel.hidden = key !== btn.dataset.tab;
+    }
+  });
+});
+
+function populateSelect(selectEl, items, valueKey, labelKey) {
+  selectEl.innerHTML = "";
+  for (const item of items) {
+    const opt = document.createElement("option");
+    opt.value = item[valueKey];
+    opt.textContent = item[labelKey];
+    selectEl.appendChild(opt);
+  }
+}
+
+function setFieldsDisabled(fieldEls, disabled) {
+  fieldEls.forEach((el) => (el.disabled = disabled));
+}
+
+function initAdminPanels() {
+  initUsersPanel();
+  initPermissionsPanel();
+  initProjectsPanel();
+}
+
+// --- 使用者管理 ---
+
+function initUsersPanel() {
+  const selectEl = document.getElementById("admin-user-select");
+  const loadBtn = document.getElementById("admin-user-load-btn");
+  const editBtn = document.getElementById("admin-user-edit-btn");
+  const newBtn = document.getElementById("admin-user-new-btn");
+  const fieldsEl = document.getElementById("admin-user-fields");
+  const idFieldEl = document.getElementById("admin-user-id-field");
+  const idEl = document.getElementById("admin-user-id");
+  const emailEl = document.getElementById("admin-user-email");
+  const nameEl = document.getElementById("admin-user-name");
+  const roleEl = document.getElementById("admin-user-role");
+  const statusEl = document.getElementById("admin-user-status");
+  const createActionsEl = document.getElementById("admin-user-create-actions");
+  const createSubmitBtn = document.getElementById("admin-user-create-submit-btn");
+  const createCancelBtn = document.getElementById("admin-user-create-cancel-btn");
+  const editableFields = [emailEl, nameEl, roleEl, statusEl];
+
+  let currentUserId = null;
+  let editing = false;
+
+  async function refreshMemberOptions() {
+    const res = await authedFetch(`${API_BASE}/admin/users?role=user`);
+    const data = await res.json();
+    populateSelect(selectEl, data.users, "id", "email");
+  }
+
+  async function refreshRoleOptions() {
+    const res = await authedFetch(`${API_BASE}/admin/permissions?include_admin=true`);
+    const data = await res.json();
+    populateSelect(roleEl, data.permissions, "id", "role");
+  }
+
+  function resetToViewMode() {
+    editing = false;
+    fieldsEl.hidden = true;
+    createActionsEl.hidden = true;
+    idFieldEl.hidden = false;
+    setFieldsDisabled(editableFields, true);
+    idEl.disabled = true;
+    editBtn.textContent = "編輯";
+    editBtn.disabled = true;
+    currentUserId = null;
+  }
+
+  loadBtn.addEventListener("click", async () => {
+    const userId = selectEl.value;
+    if (!userId) {
+      showToast("請先選擇要讀取的成員", "error");
+      return;
+    }
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/users/${userId}`);
+      if (!res.ok) throw new Error((await res.json()).error || "讀取失敗");
+      const user = await res.json();
+      currentUserId = user.id;
+      editing = false;
+      idFieldEl.hidden = false;
+      idEl.value = user.id;
+      emailEl.value = user.email;
+      nameEl.value = user.name || "";
+      roleEl.value = user.role;
+      statusEl.value = user.status;
+      fieldsEl.hidden = false;
+      createActionsEl.hidden = true;
+      setFieldsDisabled(editableFields, true);
+      editBtn.disabled = false;
+      editBtn.textContent = "編輯";
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  editBtn.addEventListener("click", async () => {
+    if (!editing) {
+      editing = true;
+      setFieldsDisabled(editableFields, false);
+      editBtn.textContent = "儲存";
+      return;
+    }
+
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/users/${currentUserId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailEl.value.trim(),
+          name: nameEl.value.trim(),
+          role: Number(roleEl.value),
+          status: statusEl.value,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "儲存失敗");
+      const data = await res.json();
+      showToast(data.changed ? "已儲存" : "無任何修改", data.changed ? "success" : undefined);
+      editing = false;
+      setFieldsDisabled(editableFields, true);
+      editBtn.textContent = "編輯";
+      await refreshMemberOptions();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  newBtn.addEventListener("click", () => {
+    currentUserId = null;
+    editing = false;
+    idFieldEl.hidden = true;
+    emailEl.value = "";
+    nameEl.value = "";
+    roleEl.value = roleEl.options[roleEl.options.length - 1]?.value || "";
+    statusEl.value = "active";
+    fieldsEl.hidden = false;
+    createActionsEl.hidden = false;
+    setFieldsDisabled(editableFields, false);
+    editBtn.disabled = true;
+  });
+
+  createCancelBtn.addEventListener("click", resetToViewMode);
+
+  createSubmitBtn.addEventListener("click", async () => {
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailEl.value.trim(),
+          name: nameEl.value.trim(),
+          role: Number(roleEl.value),
+          status: statusEl.value,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "建立失敗");
+      showToast("已建立", "success");
+      resetToViewMode();
+      await refreshMemberOptions();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  resetToViewMode();
+  refreshRoleOptions();
+  refreshMemberOptions();
+}
+
+// --- 權限管理 ---
+
+function initPermissionsPanel() {
+  const selectEl = document.getElementById("admin-permission-select");
+  const loadBtn = document.getElementById("admin-permission-load-btn");
+  const editBtn = document.getElementById("admin-permission-edit-btn");
+  const fieldsEl = document.getElementById("admin-permission-fields");
+  const idEl = document.getElementById("admin-permission-id");
+  const roleEl = document.getElementById("admin-permission-role");
+  const opusEl = document.getElementById("admin-permission-opus");
+  const haikuEl = document.getElementById("admin-permission-haiku");
+  const editableFields = [roleEl, opusEl, haikuEl];
+
+  let currentPermissionId = null;
+  let editing = false;
+
+  async function refreshPermissionOptions() {
+    // 這裡兩個下拉都要更新：選擇要讀取哪個權限(排除管理員)，
+    // 以及編輯時「權限」欄位本身可以改成哪些角色名稱(同樣排除管理員)
+    const res = await authedFetch(`${API_BASE}/admin/permissions`);
+    const data = await res.json();
+    populateSelect(selectEl, data.permissions, "id", "role");
+    populateSelect(roleEl, data.permissions, "role", "role");
+  }
+
+  function resetToViewMode() {
+    editing = false;
+    fieldsEl.hidden = true;
+    setFieldsDisabled(editableFields, true);
+    editBtn.textContent = "編輯";
+    editBtn.disabled = true;
+    currentPermissionId = null;
+  }
+
+  loadBtn.addEventListener("click", async () => {
+    const permissionId = selectEl.value;
+    if (!permissionId) {
+      showToast("請先選擇要讀取的權限", "error");
+      return;
+    }
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/permissions/${permissionId}`);
+      if (!res.ok) throw new Error((await res.json()).error || "讀取失敗");
+      const permission = await res.json();
+      currentPermissionId = permission.id;
+      editing = false;
+      idEl.value = permission.id;
+      roleEl.value = permission.role;
+      opusEl.value = permission.allowed_opus;
+      haikuEl.value = permission.allowed_haiku;
+      fieldsEl.hidden = false;
+      setFieldsDisabled(editableFields, true);
+      editBtn.disabled = false;
+      editBtn.textContent = "編輯";
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  editBtn.addEventListener("click", async () => {
+    if (!editing) {
+      editing = true;
+      setFieldsDisabled(editableFields, false);
+      editBtn.textContent = "儲存";
+      return;
+    }
+
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/permissions/${currentPermissionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: roleEl.value,
+          allowed_opus: Number(opusEl.value),
+          allowed_haiku: Number(haikuEl.value),
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "儲存失敗");
+      const data = await res.json();
+      showToast(data.changed ? "已儲存" : "無任何修改", data.changed ? "success" : undefined);
+      editing = false;
+      setFieldsDisabled(editableFields, true);
+      editBtn.textContent = "編輯";
+      await refreshPermissionOptions();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  resetToViewMode();
+  refreshPermissionOptions();
+}
+
+// --- 專案管理 ---
+
+function initProjectsPanel() {
+  const selectEl = document.getElementById("admin-project-select");
+  const loadBtn = document.getElementById("admin-project-load-btn");
+  const editBtn = document.getElementById("admin-project-edit-btn");
+  const newBtn = document.getElementById("admin-project-new-btn");
+  const fieldsEl = document.getElementById("admin-project-fields");
+  const idFieldEl = document.getElementById("admin-project-id-field");
+  const idEl = document.getElementById("admin-project-id");
+  const nameEl = document.getElementById("admin-project-name");
+  const ownerEl = document.getElementById("admin-project-owner");
+  const statusEl = document.getElementById("admin-project-status");
+  const createActionsEl = document.getElementById("admin-project-create-actions");
+  const createSubmitBtn = document.getElementById("admin-project-create-submit-btn");
+  const createCancelBtn = document.getElementById("admin-project-create-cancel-btn");
+  const editableFields = [nameEl, ownerEl, statusEl];
+
+  let currentProjectId = null;
+  let editing = false;
+
+  async function refreshProjectOptions() {
+    const res = await authedFetch(`${API_BASE}/admin/projects`);
+    const data = await res.json();
+    populateSelect(selectEl, data.projects, "id", "name");
+  }
+
+  async function refreshOwnerOptions() {
+    // 只列出 active 的使用者，deactive 的不能被指派為新的負責人
+    const res = await authedFetch(`${API_BASE}/admin/users/active-names`);
+    const data = await res.json();
+    populateSelect(ownerEl, data.users, "id", "name");
+  }
+
+  function resetToViewMode() {
+    editing = false;
+    fieldsEl.hidden = true;
+    createActionsEl.hidden = true;
+    idFieldEl.hidden = false;
+    setFieldsDisabled(editableFields, true);
+    editBtn.textContent = "編輯";
+    editBtn.disabled = true;
+    currentProjectId = null;
+  }
+
+  loadBtn.addEventListener("click", async () => {
+    const projectId = selectEl.value;
+    if (!projectId) {
+      showToast("請先選擇要讀取的專案", "error");
+      return;
+    }
+    try {
+      await refreshOwnerOptions();
+      const res = await authedFetch(`${API_BASE}/admin/projects/${projectId}`);
+      if (!res.ok) throw new Error((await res.json()).error || "讀取失敗");
+      const project = await res.json();
+      currentProjectId = project.id;
+      editing = false;
+      idFieldEl.hidden = false;
+      idEl.value = project.id;
+      nameEl.value = project.name;
+      // 負責人可能是目前已 deactive、下拉選單裡搜尋不到的人——這種情況
+      // 下拉會顯示不出對應選項，但不影響「不改負責人」的儲存(送出的還是
+      // 原本的 owner id)。要換人才必須換成 active 名單裡的人。
+      ownerEl.value = project.owner;
+      statusEl.value = project.status;
+      fieldsEl.hidden = false;
+      createActionsEl.hidden = true;
+      setFieldsDisabled(editableFields, true);
+      editBtn.disabled = false;
+      editBtn.textContent = "編輯";
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  editBtn.addEventListener("click", async () => {
+    if (!editing) {
+      editing = true;
+      setFieldsDisabled(editableFields, false);
+      editBtn.textContent = "儲存";
+      return;
+    }
+
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/projects/${currentProjectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameEl.value.trim(),
+          owner: Number(ownerEl.value),
+          status: statusEl.value,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "儲存失敗");
+      const data = await res.json();
+      showToast(data.changed ? "已儲存" : "無任何修改", data.changed ? "success" : undefined);
+      editing = false;
+      setFieldsDisabled(editableFields, true);
+      editBtn.textContent = "編輯";
+      await refreshProjectOptions();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  newBtn.addEventListener("click", async () => {
+    await refreshOwnerOptions();
+    currentProjectId = null;
+    editing = false;
+    idFieldEl.hidden = true;
+    nameEl.value = "";
+    ownerEl.value = ownerEl.options[0]?.value || "";
+    statusEl.value = "pending";
+    fieldsEl.hidden = false;
+    createActionsEl.hidden = false;
+    setFieldsDisabled(editableFields, false);
+    editBtn.disabled = true;
+  });
+
+  createCancelBtn.addEventListener("click", resetToViewMode);
+
+  createSubmitBtn.addEventListener("click", async () => {
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: nameEl.value.trim(),
+          owner: Number(ownerEl.value),
+          status: statusEl.value,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "建立失敗");
+      showToast("已建立", "success");
+      resetToViewMode();
+      await refreshProjectOptions();
+    } catch (e) {
+      showToast(e.message, "error");
+    }
+  });
+
+  resetToViewMode();
+  refreshProjectOptions();
+}
