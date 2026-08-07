@@ -90,6 +90,7 @@ async function checkAuthStatus() {
   try {
     const res = await fetch(`${API_BASE}/auth/status`, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
+    console.log("[auth] /auth/status →", res.status, data);
     if (res.status === 200) {
       currentAuthorized = !!data.authorized;
       showSignedInUI(data.email);
@@ -113,8 +114,13 @@ async function checkAuthStatus() {
       showToast("登入已過期，請重新登入", "error");
     }
   } catch (err) {
+    // 網路層級的失敗（例如 CORS 被擋、連不上後端）——之前這裡完全沒有
+    // 任何提示，使用者只會看到頁面莫名其妙鎖住，不知道發生了什麼事。
+    // 一定要讓使用者知道檢查失敗了，不能靜默鎖住。
+    console.error("[auth] checkAuthStatus 發生例外：", err);
     currentAuthorized = false;
     setPageLocked(true);
+    showToast("無法確認登入狀態，請檢查網路連線後重新整理", "error");
   }
 }
 
