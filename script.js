@@ -1078,7 +1078,7 @@ function initUsersPanel() {
   }
 
   async function refreshMemberOptions() {
-    const res = await authedFetch(`${API_BASE}/admin/users?role=user`);
+    const res = await authedFetch(`${API_BASE}/admin/users`);
     const data = await res.json();
     // 名字沒填的話退回顯示信箱，避免下拉選單出現空白選項
     const users = data.users.map((u) => ({ ...u, label: u.name || u.email }));
