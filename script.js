@@ -1042,10 +1042,40 @@ function initUsersPanel() {
   const createActionsEl = document.getElementById("admin-user-create-actions");
   const createSubmitBtn = document.getElementById("admin-user-create-submit-btn");
   const createCancelBtn = document.getElementById("admin-user-create-cancel-btn");
+  const projectsBlockEl = document.getElementById("admin-user-projects-block");
+  const projectsListEl = document.getElementById("admin-user-projects-list");
   const editableFields = [emailEl, nameEl, roleEl, statusEl];
 
   let currentUserId = null;
   let editing = false;
+
+  // 讀取某個使用者之後，順便列出他名下負責的專案（不含 closed，
+  // closed 的專案對「這個人手上還有哪些案子」這件事已經沒有意義）
+  async function loadUserProjects(userId) {
+    projectsListEl.textContent = "載入中…";
+    projectsBlockEl.hidden = false;
+    try {
+      const res = await authedFetch(`${API_BASE}/admin/users/${userId}/projects`);
+      if (!res.ok) throw new Error((await res.json()).error || "讀取專案清單失敗");
+      const data = await res.json();
+      projectsListEl.innerHTML = "";
+      if (data.projects.length === 0) {
+        const row = document.createElement("div");
+        row.className = "usage-row";
+        row.textContent = "目前沒有負責中的專案";
+        projectsListEl.appendChild(row);
+      } else {
+        for (const project of data.projects) {
+          const row = document.createElement("div");
+          row.className = "usage-row";
+          row.textContent = `${project.name}：${project.status}`;
+          projectsListEl.appendChild(row);
+        }
+      }
+    } catch (e) {
+      projectsListEl.textContent = "（載入失敗）";
+    }
+  }
 
   async function refreshMemberOptions() {
     const res = await authedFetch(`${API_BASE}/admin/users?role=user`);
@@ -1069,6 +1099,7 @@ function initUsersPanel() {
     editBtn.textContent = "編輯";
     editBtn.disabled = true;
     currentUserId = null;
+    projectsBlockEl.hidden = true;
   }
 
   loadBtn.addEventListener("click", async () => {
@@ -1094,6 +1125,7 @@ function initUsersPanel() {
       setFieldsDisabled(editableFields, true);
       editBtn.disabled = false;
       editBtn.textContent = "編輯";
+      loadUserProjects(user.id);
     } catch (e) {
       showToast(e.message, "error");
     }
@@ -1142,6 +1174,7 @@ function initUsersPanel() {
     createActionsEl.hidden = false;
     setFieldsDisabled(editableFields, false);
     editBtn.disabled = true;
+    projectsBlockEl.hidden = true;
   });
 
   createCancelBtn.addEventListener("click", resetToViewMode);

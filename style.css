@@ -163,6 +163,17 @@ body {
   cursor: not-allowed;
 }
 
+.admin-user-projects {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.admin-user-projects h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+}
+
 .account-slot {
   position: relative;
   display: flex;
