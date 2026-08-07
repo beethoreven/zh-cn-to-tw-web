@@ -42,8 +42,16 @@
           <h2>今日使用量</h2>
           <div id="usage-list" class="usage-list">載入中…</div>
 
-          <h2>本月使用量</h2>
-          <div id="monthly-usage-list" class="usage-list">載入中…</div>
+          <h2>本案處理劇本</h2>
+          <div class="project-picker-row">
+            <select id="project-select"></select>
+            <button type="button" id="project-confirm-btn">確定</button>
+          </div>
+
+          <div id="project-usage-block" hidden>
+            <h2>本案使用Claude token狀況</h2>
+            <div id="project-usage-list" class="usage-list">載入中…</div>
+          </div>
         </section>
 
         <div class="columns">
@@ -238,6 +246,11 @@
 
   <main class="admin-container" id="admin-container" hidden>
     <h1>管理員介面</h1>
+
+    <section class="admin-usage-totals" id="admin-usage-totals">
+      <h2>Claude Token 總使用量</h2>
+      <div id="admin-usage-totals-list" class="usage-list">載入中…</div>
+    </section>
 
     <div class="admin-tabs">
       <button type="button" class="admin-tab-btn active" data-tab="users">使用者管理</button>

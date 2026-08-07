@@ -43,6 +43,12 @@ let toastTimer = null;
 let appDataLoaded = false; // Stage 1/2 的選項、使用量等資料只需要在授權後載入一次
 let adminDataLoaded = false; // 管理員介面的下拉選單資料只需要在第一次打開時載入一次
 
+// 使用者登入後必須先選定「本案處理劇本」並按下確定，下方 Stage 1/2
+// 區塊才會解鎖——確定的專案 ID 之後每次呼叫 model 都會帶上，記進
+// usage_log.project，讓「本案使用 Claude token 狀況」能統計出正確數字
+let projectConfirmed = false;
+let currentProjectId = null;
+
 function showToast(message, type) {
   clearTimeout(toastTimer);
   toastEl.textContent = message;
@@ -109,6 +115,14 @@ function showSignedOutUI() {
   adminToggleBtnEl.hidden = true;
   showMainView();
   setPageLocked(true);
+
+  // 登出後劇本案的選擇也要重置：下次登入（可能是別的使用者）必須
+  // 重新選一次，不能沿用上一個帳號選過的專案
+  projectConfirmed = false;
+  currentProjectId = null;
+  projectSelectEl.innerHTML = "";
+  projectUsageBlockEl.hidden = true;
+  refreshLockStates();
 }
 
 function showSignedInUI(email) {
@@ -142,7 +156,7 @@ async function checkAuthStatus() {
           loadOptions();
           loadReviewOptions();
           loadUsage();
-          loadMonthlyUsage();
+          loadMyProjects();
         }
       }
     } else {
@@ -279,7 +293,10 @@ let stage1Started = false;
 let isProcessing = false;
 let stage2Unlocked = false;
 
-const monthlyUsageList = document.getElementById("monthly-usage-list");
+const projectSelectEl = document.getElementById("project-select");
+const projectConfirmBtnEl = document.getElementById("project-confirm-btn");
+const projectUsageBlockEl = document.getElementById("project-usage-block");
+const projectUsageListEl = document.getElementById("project-usage-list");
 
 const directUploadField = document.getElementById("direct-upload-field");
 const directUploadInput = document.getElementById("direct-upload-input");
@@ -406,22 +423,58 @@ async function loadUsage() {
   }
 }
 
-async function loadMonthlyUsage() {
-  const res = await authedFetch(`${API_BASE}/api/usage/monthly`);
-  const data = await res.json();
-
-  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
-
-  monthlyUsageList.innerHTML = "";
+// Claude 用量統計三個地方共用的算繪邏輯（本案使用狀況／管理員總使用量）：
+// 資料形狀都是 {models: {model: {input_tokens, output_tokens, twd_cost}}}
+function renderClaudeUsageRows(listEl, data, modelInfoMap) {
+  listEl.innerHTML = "";
   for (const [model, info] of Object.entries(data.models)) {
-    const label = reviewOpts.models[model]?.label || model;
+    const label = modelInfoMap[model]?.label || model;
     const totalTokens = info.input_tokens + info.output_tokens;
     const row = document.createElement("div");
     row.className = "usage-row";
     row.textContent = `${label}：${totalTokens.toLocaleString()} tokens / 約 NT$${info.twd_cost.toFixed(2)}`;
-    monthlyUsageList.appendChild(row);
+    listEl.appendChild(row);
   }
 }
+
+async function loadMyProjects() {
+  const res = await authedFetch(`${API_BASE}/api/my-projects`);
+  const data = await res.json();
+
+  projectSelectEl.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "請選擇劇本案";
+  projectSelectEl.appendChild(placeholder);
+  for (const project of data.projects) {
+    const option = document.createElement("option");
+    option.value = project.id;
+    option.textContent = project.name;
+    projectSelectEl.appendChild(option);
+  }
+}
+
+async function loadProjectUsage() {
+  if (!currentProjectId) return;
+  const res = await authedFetch(`${API_BASE}/api/usage/project/${currentProjectId}`);
+  const data = await res.json();
+
+  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
+
+  renderClaudeUsageRows(projectUsageListEl, data, reviewOpts.models);
+}
+
+projectConfirmBtnEl.addEventListener("click", () => {
+  if (!projectSelectEl.value) {
+    showToast("尚未選擇專案", "error");
+    return;
+  }
+  currentProjectId = Number(projectSelectEl.value);
+  projectConfirmed = true;
+  refreshLockStates();
+  projectUsageBlockEl.hidden = false;
+  loadProjectUsage();
+});
 
 submitBtn.addEventListener("click", async () => {
   const file = fileInput.files[0];
@@ -448,6 +501,7 @@ submitBtn.addEventListener("click", async () => {
   formData.append("max_retry", retryInput.value);
   formData.append("dpi", dpiInput.value);
   formData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+  formData.append("project", currentProjectId);
 
   lastStage1Model = modelSelect.value;
   stage1Started = true;
@@ -612,10 +666,14 @@ function setDirectUploadLocked(locked) {
 
 // 統一的鎖定狀態更新：任何一個狀態旗標變動後都呼叫這個函式重新整理畫面，
 // 不要在各個事件處理常式裡零散地直接改 disabled，避免漏改、狀態兜不攏
+//
+// !projectConfirmed 額外 AND 進 Stage 1/2 的鎖定條件：登入後上方的
+// 「本案處理劇本」選單本身不受這個限制（一登入就能選、按確定），但
+// 下方的 Stage 1/2 區塊要等選定劇本案並按下確定後才解鎖。
 function refreshLockStates() {
-  setStage1FormLocked(isProcessing);
-  setDirectUploadLocked(stage1Started || isProcessing);
-  setStage2Locked(isProcessing || !stage2Unlocked);
+  setStage1FormLocked(isProcessing || !projectConfirmed);
+  setDirectUploadLocked(stage1Started || isProcessing || !projectConfirmed);
+  setStage2Locked(isProcessing || !stage2Unlocked || !projectConfirmed);
   if (isProcessing) {
     rerunBtn.disabled = true;
   }
@@ -714,6 +772,7 @@ async function runReview() {
   formData.append("model", reviewModelSelect.value);
   formData.append("batch_chars", reviewBatchSelect.value);
   formData.append("max_retry", reviewRetryInput.value);
+  formData.append("project", currentProjectId);
 
   isProcessing = true;
   refreshLockStates();
@@ -759,7 +818,7 @@ function pollReview(reviewId) {
     reviewStatusText.textContent = review.status_label || review.status;
     renderNewReviewLogs(review.logs);
     loadUsage();
-    loadMonthlyUsage();
+    loadProjectUsage();
 
     if (review.status === "done") {
       clearInterval(reviewPollTimer);
@@ -886,6 +945,7 @@ rerunBtn.addEventListener("click", async () => {
   formData.append("model", reviewModelSelect.value);
   formData.append("batch_chars", reviewBatchSelect.value);
   formData.append("max_retry", reviewRetryInput.value);
+  formData.append("project", currentProjectId);
 
   isProcessing = true;
   refreshLockStates();
@@ -912,7 +972,7 @@ rerunBtn.addEventListener("click", async () => {
 
 refreshLockStates();
 // 注意：loadTeacherNotice/loadOptions/loadReviewOptions/loadUsage/
-// loadMonthlyUsage 不在這裡無條件呼叫——這些都是受保護的 API，沒登入
+// loadMyProjects 不在這裡無條件呼叫——這些都是受保護的 API，沒登入
 // 會直接 401。改成在 checkAuthStatus() 確認授權成功後才觸發（見上方
 // 「Google 登入」區塊），避免頁面一載入就打一堆註定失敗的請求。
 
@@ -924,6 +984,16 @@ const adminPanels = {
   permissions: document.getElementById("admin-panel-permissions"),
   projects: document.getElementById("admin-panel-projects"),
 };
+const adminUsageTotalsListEl = document.getElementById("admin-usage-totals-list");
+
+async function loadAdminUsageTotals() {
+  const res = await authedFetch(`${API_BASE}/admin/usage/totals`);
+  const data = await res.json();
+
+  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
+
+  renderClaudeUsageRows(adminUsageTotalsListEl, data, reviewOpts.models);
+}
 
 adminTabBtns.forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -949,6 +1019,7 @@ function setFieldsDisabled(fieldEls, disabled) {
 }
 
 function initAdminPanels() {
+  loadAdminUsageTotals();
   initUsersPanel();
   initPermissionsPanel();
   initProjectsPanel();
