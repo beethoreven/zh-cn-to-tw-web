@@ -1,4 +1,10 @@
-const API_BASE = "https://zh-cn-to-tw-backend.onrender.com";
+// 本機開發時（用 python3 -m http.server 之類的方式在 localhost/127.0.0.1
+// 開這個前端）自動改打本機後端，不用手動改這行、也不用擔心改完忘記
+// 改回來就 push——正式環境（GitHub Pages）的 hostname 一定不是這兩個，
+// 不會受影響。
+const API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "http://localhost:5001"
+  : "https://zh-cn-to-tw-backend.onrender.com";
 
 // Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
 // 無法保證真的每 10 分鐘執行(GitHub 自己的 schedule 觸發時間常常延遲數小時),
