@@ -6,6 +6,20 @@ const API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
   ? "http://localhost:5001"
   : "https://zh-cn-to-tw-backend.onrender.com";
 
+// ===== 桌面版 App 偵測 =====
+// 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶
+// ?desktop=1&ocrPort=<本機服務 port>&ocrToken=<殼啟動時產生的隨機值>，有這個
+// 標記時 Stage 1 送出的 PDF 要先送去本機的 zh-cn-to-tw-ocr-service 做 OCR，
+// 再把辨識完的文字轉送給 Render 後端做潤飾，而不是像瀏覽器版那樣把整份
+// PDF 直接丟給 Render（Render 免費方案扛不住 PaddleOCR，見 desktop_app_plan
+// 設計文件）。純瀏覽器開啟（網址沒有這些參數）行為完全不受影響。
+const desktopParams = new URLSearchParams(window.location.search);
+const DESKTOP_MODE = desktopParams.get("desktop") === "1";
+const DESKTOP_OCR_PORT = desktopParams.get("ocrPort");
+const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
+const DESKTOP_OCR_BASE =
+  DESKTOP_MODE && DESKTOP_OCR_PORT ? `http://127.0.0.1:${DESKTOP_OCR_PORT}` : null;
+
 // Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
 // 無法保證真的每 10 分鐘執行(GitHub 自己的 schedule 觸發時間常常延遲數小時),
 // 所以只要這個分頁還開著,就自己每 5 分鐘打一次 /api/health,確保使用中途
@@ -618,15 +632,54 @@ submitBtn.addEventListener("click", async () => {
   rerunBtn.disabled = true;
 
   try {
-    const res = await authedFetch(`${API_BASE}/api/jobs`, {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error || "上傳失敗");
+    let jobId;
+    if (DESKTOP_OCR_BASE) {
+      statusText.textContent = "本機 OCR 辨識中";
+      const ocrFormData = new FormData();
+      ocrFormData.append("file", file);
+      ocrFormData.append("dpi", dpiInput.value);
+      ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+
+      const ocrRes = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf`, {
+        method: "POST",
+        headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+        body: ocrFormData,
+      });
+      if (!ocrRes.ok) {
+        const err = await ocrRes.json();
+        throw new Error(err.error || "本機 OCR 辨識失敗");
+      }
+      const { pages } = await ocrRes.json();
+
+      statusText.textContent = "上傳中";
+      const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pages,
+          model: modelSelect.value,
+          batch_pages: batchSelect.value,
+          max_retry: retryInput.value,
+          file_name: file.name,
+          project: currentProjectId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "上傳失敗");
+      }
+      ({ job_id: jobId } = await res.json());
+    } else {
+      const res = await authedFetch(`${API_BASE}/api/jobs`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "上傳失敗");
+      }
+      ({ job_id: jobId } = await res.json());
     }
-    const { job_id: jobId } = await res.json();
     pollJob(jobId);
   } catch (e) {
     if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
