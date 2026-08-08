@@ -293,10 +293,13 @@ body {
   padding: 2.5rem 1.5rem;
 }
 
-/* 沒登入或未授權時，整頁內容鎖住——這只是給使用者看的視覺提示，
+/* 沒登入或未授權時，主要內容區塊鎖住——這只是給使用者看的視覺提示，
    真正擋掉未授權存取的是後端每支 API 自己驗證 token，這裡就算被
-   devtools 拔掉也不影響安全性 */
-.container.page-locked {
+   devtools 拔掉也不影響安全性。刻意套用在 .main-column 而不是整個
+   .container，讓 .sidebar-column（阿舍老師的叮嚀）不受影響——opacity
+   會透過合成往下影響所有子元素，唯一乾淨的排除方式就是不要把不該被
+   鎖的東西放在鎖定範圍的子孫裡面 */
+.main-column.page-locked {
   opacity: 0.4;
   pointer-events: none;
   user-select: none;

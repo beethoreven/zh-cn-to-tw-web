@@ -32,6 +32,12 @@ const GOOGLE_CLIENT_ID = "415031055130-73moi9aantfm5hjojmt1r0isk2uo35mr.apps.goo
 const ID_TOKEN_STORAGE_KEY = "ztw_id_token";
 
 const containerEl = document.querySelector(".container");
+// 鎖定效果特意套用在 .main-column（不是整個 .container）：CSS 的
+// opacity 會透過合成往下影響所有子元素，子元素自己設 opacity:1 沒辦法
+// 蓋掉父層的效果，唯一乾淨的解法是「鎖定的對象本身不要包含不該被鎖的
+// 東西」——.sidebar-column（阿舍老師的叮嚀）是 .main-column 的手足，
+// 不是子孫，這樣鎖定就完全影響不到它，不用把它搬到 DOM 樹外面
+const mainColumnEl = document.querySelector(".main-column");
 const adminContainerEl = document.getElementById("admin-container");
 const adminToggleBtnEl = document.getElementById("admin-toggle-btn");
 const googleSigninBtnEl = document.getElementById("google-signin-button");
@@ -133,11 +139,12 @@ function authedFetch(url, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
-// 沒登入或未授權時，把整頁內容都鎖住（含純顯示的區塊，例如使用量統計、
-// 阿舍老師的叮嚀）——這只是視覺提示，devtools 拔掉也沒用，真正擋掉
-// 未授權存取的是後端每支 API 自己驗證 token。
+// 沒登入或未授權時，把主要內容區塊都鎖住（含純顯示的區塊，例如使用量
+// 統計）——這只是視覺提示，devtools 拔掉也沒用，真正擋掉未授權存取的
+// 是後端每支 API 自己驗證 token。「阿舍老師的叮嚀」刻意不受這個影響，
+// 不需要登入就看得到（見 mainColumnEl 的說明）。
 function setPageLocked(locked) {
-  containerEl.classList.toggle("page-locked", locked);
+  mainColumnEl.classList.toggle("page-locked", locked);
 }
 
 // 主介面／管理員介面二選一顯示，同一個按鈕在兩邊切換文字跟功能
@@ -225,7 +232,6 @@ async function checkAuthStatus() {
         setPageLocked(false);
         if (!appDataLoaded) {
           appDataLoaded = true;
-          loadTeacherNotice();
           loadOptions();
           loadReviewOptions();
           loadUsage();
@@ -442,12 +448,14 @@ function validateBoundedInput(input, fieldLabel) {
   return null;
 }
 
+// 純靜態內容，跟網頁本身放在一起、不用登入也看得到，所以不透過後端
+// API（不用 authedFetch、不用等登入），直接抓同源的純文字檔案
 async function loadTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
   try {
-    const res = await authedFetch(`${API_BASE}/api/teacher-notice`);
-    const data = await res.json();
-    teacherNoticeText.textContent = data.text || "（目前沒有內容）";
+    const res = await fetch("teacher-notice.txt");
+    const text = await res.text();
+    teacherNoticeText.textContent = text || "（目前沒有內容）";
   } catch (e) {
     teacherNoticeText.textContent = "（載入失敗）";
   }
@@ -1099,10 +1107,15 @@ rerunBtn.addEventListener("click", async () => {
 });
 
 refreshLockStates();
-// 注意：loadTeacherNotice/loadOptions/loadReviewOptions/loadUsage/
-// loadMyProjects 不在這裡無條件呼叫——這些都是受保護的 API，沒登入
-// 會直接 401。改成在 checkAuthStatus() 確認授權成功後才觸發（見上方
-// 「Google 登入」區塊），避免頁面一載入就打一堆註定失敗的請求。
+// 注意：loadOptions/loadReviewOptions/loadUsage/loadMyProjects 不在這裡
+// 無條件呼叫——這些都是受保護的 API，沒登入會直接 401。改成在
+// checkAuthStatus() 確認授權成功後才觸發（見上方「Google 登入」區塊），
+// 避免頁面一載入就打一堆註定失敗的請求。
+//
+// loadTeacherNotice 是例外：內容是純靜態檔案、不需要登入，所以無論有
+// 沒有登入都直接載入，且不受下面的 page-locked 視覺鎖定影響
+// （CSS 裡對 .sidebar-column 有特別排除）。
+loadTeacherNotice();
 
 // ===== 管理員介面 =====
 
