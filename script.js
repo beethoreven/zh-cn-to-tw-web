@@ -313,8 +313,18 @@ btnSignOut.addEventListener("click", (e) => {
 
 function filenameFromContentDisposition(header, fallback) {
   if (!header) return fallback;
-  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
-  return match ? decodeURIComponent(match[1]) : fallback;
+  // 後端檔名如果含中文（例如「朱懿安先行本.txt」），Flask send_file 對
+  // 非 ASCII 檔名會同時送兩個參數：純 ASCII 的 filename="..."（中文字
+  // 元整個被拿掉，剩下的常常只有副檔名）跟正確完整編碼過的
+  // filename*=UTF-8''...——一定要優先抓後者，不然下載出來的檔名會變得
+  // 面目全非（例如只剩「.txt」）。純 ASCII 檔名的情況下 Flask 只會送
+  // 前者，所以還是要留著這個 fallback。
+  const extendedMatch = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (extendedMatch) {
+    return decodeURIComponent(extendedMatch[1]);
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch ? plainMatch[1] : fallback;
 }
 
 // 下載端點需要帶登入憑證，不能像以前那樣直接用 <a href> 導覽（那樣
