@@ -123,6 +123,14 @@ function showSignedOutUI() {
   projectSelectEl.innerHTML = "";
   projectUsageBlockEl.hidden = true;
   refreshLockStates();
+
+  // 這兩個旗標控制「這些資料只在登入後載入一次」——同一個分頁換帳號
+  // 重新登入時要重置，不然新帳號會沿用舊帳號當初載入的資料，且
+  // loadMyProjects 等呼叫因為旗標是 true 而完全不會再執行一次
+  appDataLoaded = false;
+  adminDataLoaded = false;
+
+  resetJobAndReviewState();
 }
 
 function showSignedInUI(email) {
@@ -516,6 +524,19 @@ submitBtn.addEventListener("click", async () => {
   currentJobId = null;
   statusText.textContent = "上傳中";
 
+  // 上一個檔案如果已經跑完 Stage 2、留有校對結果／下載鍵／重新校對鍵
+  // 還能按，這裡要一併清掉——不然這些畫面跟按鍵會一直指向舊檔案的
+  // review_id，讓人誤以為是這次剛上傳的檔案的結果
+  currentReviewId = null;
+  clearInterval(reviewPollTimer);
+  renderedReviewLogCount = 0;
+  reviewProgress.hidden = true;
+  reviewLogList.innerHTML = "";
+  reviewFindingsSection.hidden = true;
+  findingsList.innerHTML = "";
+  reviewDownloadBtn.disabled = true;
+  rerunBtn.disabled = true;
+
   try {
     const res = await authedFetch(`${API_BASE}/api/jobs`, {
       method: "POST",
@@ -757,6 +778,32 @@ function resetReviewUI() {
   rerunBtn.disabled = true;
 }
 
+// 登出時要把 Stage 1/2 的整個工作狀態歸零，不然同一個分頁換一個帳號
+// 登入後，還會看到上一個使用者的 job/review 結果、下載鍵/重新校對鍵
+// 也還是可以按（背後其實是打上一個使用者留下來的 job_id/review_id）。
+// 還在跑的輪詢也要清掉，不然它會在新的登入狀態下繼續覆寫畫面。
+function resetJobAndReviewState() {
+  clearInterval(pollTimer);
+  clearInterval(reviewPollTimer);
+  currentJobId = null;
+  currentReviewId = null;
+  stage1Started = false;
+  isProcessing = false;
+  stage2Unlocked = false;
+  renderedLogCount = 0;
+  renderedReviewLogCount = 0;
+  statusBox.hidden = true;
+  logList.innerHTML = "";
+  downloadBtn.disabled = true;
+  startReviewBtn.disabled = true;
+  reviewProgress.hidden = true;
+  reviewLogList.innerHTML = "";
+  reviewFindingsSection.hidden = true;
+  findingsList.innerHTML = "";
+  reviewDownloadBtn.disabled = true;
+  rerunBtn.disabled = true;
+}
+
 reviewRunBtn.addEventListener("click", runReview);
 
 async function runReview() {
@@ -860,7 +907,7 @@ function renderFindings(findings) {
     li.className = "finding-item";
     li.innerHTML = `
       <label class="finding-checkbox-row">
-        <input type="checkbox" class="finding-checkbox" data-id="${finding.id}" checked />
+        <input type="checkbox" class="finding-checkbox" data-id="${escapeHtml(String(finding.id))}" checked />
         <span class="finding-diff">
           <span class="finding-original">${escapeHtml(finding.original)}</span>
           →
@@ -1170,7 +1217,11 @@ function initUsersPanel() {
     idFieldEl.hidden = true;
     emailEl.value = "";
     nameEl.value = "";
-    roleEl.value = roleEl.options[roleEl.options.length - 1]?.value || "";
+    // 新建使用者預設角色：明確排除 admin，不要依賴選項在陣列裡的
+    // 順序（萬一 API 回傳順序改變，或未來多了別的非管理員角色，
+    // 「挑最後一個」這種寫法可能會不小心把新使用者預設成管理員）
+    const defaultRoleOption = [...roleEl.options].find((o) => o.textContent !== "admin");
+    roleEl.value = defaultRoleOption ? defaultRoleOption.value : roleEl.options[0]?.value || "";
     statusEl.value = "active";
     fieldsEl.hidden = false;
     createActionsEl.hidden = false;
@@ -1361,10 +1412,20 @@ function initProjectsPanel() {
       idFieldEl.hidden = false;
       idEl.value = project.id;
       nameEl.value = project.name;
-      // 負責人可能是目前已 deactive、下拉選單裡搜尋不到的人——這種情況
-      // 下拉會顯示不出對應選項，但不影響「不改負責人」的儲存(送出的還是
-      // 原本的 owner id)。要換人才必須換成 active 名單裡的人。
+      // 負責人可能是目前已 deactive、active-only 下拉選單裡搜尋不到的人——
+      // 這種情況原本會讓 <select> 選不中任何選項，.value 變成空字串，
+      // 「不改負責人」按儲存時反而把 owner 意外送成空字串(轉數字後是 0)，
+      // 悄悄把負責人改壞。這裡額外補一個選項，確保畫面正確顯示、
+      // 「不改負責人」時儲存的還是原本的 owner id；要換人才必須換成
+      // active 名單裡的人。
       ownerEl.value = project.owner;
+      if (ownerEl.value !== String(project.owner)) {
+        const deactiveOwnerOption = document.createElement("option");
+        deactiveOwnerOption.value = project.owner;
+        deactiveOwnerOption.textContent = `${project.owner_name || project.owner}（已停用）`;
+        ownerEl.appendChild(deactiveOwnerOption);
+        ownerEl.value = project.owner;
+      }
       statusEl.value = project.status;
       fieldsEl.hidden = false;
       createActionsEl.hidden = true;
