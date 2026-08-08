@@ -49,6 +49,63 @@ let adminDataLoaded = false; // 管理員介面的下拉選單資料只需要在
 let projectConfirmed = false;
 let currentProjectId = null;
 
+// 「個人專案」：沒有負責人、所有人都能選的共用專案（owner 是 null）。
+// 選到這個專案時，Claude model 選單要拿掉（後端也會擋，這裡只是
+// 視覺提示，不用重打一次 API 才知道要不要擋）。projectOwnerById 在
+// loadMyProjects() 載入下拉選單時一起建立，key/value 都是數字（跟
+// currentProjectId 型別一致），owner 是 null 就代表是個人專案。
+let projectOwnerById = new Map();
+let isPersonalProject = false;
+
+// Stage 1/2 的完整 model 清單（含 Claude），從 /api/options、
+// /api/review-options 抓回來後快取起來——選到個人專案時要把 Claude
+// 選項從畫面上拿掉，不想因為這樣就多打一次 API，快取起來自己重新
+// 算繪選單即可
+let stage1AllOpts = null;
+let stage2AllOpts = null;
+
+// Stage 1/2 model 選單共用的算繪邏輯：excludeClaude 為 true 時，Claude
+// 系列 model 完全不會出現在選單裡（不是 disabled 灰字，是直接不存在），
+// 確保「選單面就不給選」；盡量保留原本選到的值，選不到才退回預設值
+function renderModelOptions(selectEl, opts, descriptionsMap, excludeClaude) {
+  const previousValue = selectEl.value;
+  selectEl.innerHTML = "";
+  for (const [value, info] of Object.entries(opts.models)) {
+    if (excludeClaude && value.startsWith("claude")) continue;
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = info.label;
+    selectEl.appendChild(option);
+    descriptionsMap[value] = info.description;
+  }
+  const hasOption = (v) => [...selectEl.options].some((o) => o.value === v);
+  if (hasOption(previousValue)) {
+    selectEl.value = previousValue;
+  } else if (hasOption(opts.default_model)) {
+    selectEl.value = opts.default_model;
+  } else {
+    selectEl.value = selectEl.options[0]?.value || "";
+  }
+}
+
+// 選定劇本案之後呼叫：依目前是不是「個人專案」重新算繪 Stage 1/2
+// 的 model 選單。opts 還沒載入過（理論上不會發生，appDataLoaded 一定
+// 會先跑 loadOptions/loadReviewOptions）就跳過，避免噴錯
+function applyModelRestrictionsForProject() {
+  if (stage1AllOpts) {
+    renderModelOptions(modelSelect, stage1AllOpts, modelDescriptions, isPersonalProject);
+    modelHelp.textContent = modelDescriptions[modelSelect.value] || "";
+  }
+  if (stage2AllOpts) {
+    renderModelOptions(reviewModelSelect, stage2AllOpts, reviewModelDescriptions, isPersonalProject);
+    reviewModelHelp.textContent = reviewModelDescriptions[reviewModelSelect.value] || "";
+  }
+}
+
+// 後端在「個人專案」限制被違反時回傳的錯誤訊息，跟 showToast 搭配用：
+// 這兩種情況要跳 toast，不是走一般的「上傳中→錯誤」內嵌狀態文字
+const PERSONAL_PROJECT_ERROR_MESSAGES = new Set(["個人專案不能使用 Claude Model", "個人專案使用量達上限"]);
+
 function showToast(message, type) {
   clearTimeout(toastTimer);
   toastEl.textContent = message;
@@ -120,6 +177,8 @@ function showSignedOutUI() {
   // 重新選一次，不能沿用上一個帳號選過的專案
   projectConfirmed = false;
   currentProjectId = null;
+  isPersonalProject = false;
+  projectOwnerById = new Map();
   projectSelectEl.innerHTML = "";
   projectUsageBlockEl.hidden = true;
   refreshLockStates();
@@ -381,17 +440,10 @@ async function loadTeacherNotice() {
 async function loadOptions() {
   const res = await authedFetch(`${API_BASE}/api/options`);
   const opts = await res.json();
+  stage1AllOpts = opts;
 
-  modelSelect.innerHTML = "";
-  for (const [value, info] of Object.entries(opts.models)) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = info.label;
-    modelSelect.appendChild(option);
-    modelDescriptions[value] = info.description;
-  }
-  modelSelect.value = opts.default_model;
-  modelHelp.textContent = modelDescriptions[opts.default_model] || "";
+  renderModelOptions(modelSelect, opts, modelDescriptions, isPersonalProject);
+  modelHelp.textContent = modelDescriptions[modelSelect.value] || "";
   modelSelect.addEventListener("change", () => {
     modelHelp.textContent = modelDescriptions[modelSelect.value] || "";
   });
@@ -454,11 +506,13 @@ async function loadMyProjects() {
   placeholder.value = "";
   placeholder.textContent = "請選擇劇本案";
   projectSelectEl.appendChild(placeholder);
+  projectOwnerById = new Map();
   for (const project of data.projects) {
     const option = document.createElement("option");
     option.value = project.id;
     option.textContent = project.name;
     projectSelectEl.appendChild(option);
+    projectOwnerById.set(project.id, project.owner);
   }
 }
 
@@ -478,6 +532,8 @@ projectConfirmBtnEl.addEventListener("click", () => {
     return;
   }
   currentProjectId = Number(projectSelectEl.value);
+  isPersonalProject = projectOwnerById.get(currentProjectId) === null;
+  applyModelRestrictionsForProject();
   projectConfirmed = true;
   refreshLockStates();
   projectUsageBlockEl.hidden = false;
@@ -549,7 +605,13 @@ submitBtn.addEventListener("click", async () => {
     const { job_id: jobId } = await res.json();
     pollJob(jobId);
   } catch (e) {
-    statusText.textContent = `錯誤：${e.message}`;
+    if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
+      showToast(e.message, "error");
+      statusBox.hidden = true;
+      stage1Started = false;
+    } else {
+      statusText.textContent = `錯誤：${e.message}`;
+    }
     isProcessing = false;
     refreshLockStates();
   }
@@ -630,17 +692,10 @@ function renderNewLogs(logs) {
 async function loadReviewOptions() {
   const res = await authedFetch(`${API_BASE}/api/review-options`);
   const opts = await res.json();
+  stage2AllOpts = opts;
 
-  reviewModelSelect.innerHTML = "";
-  for (const [value, info] of Object.entries(opts.models)) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = info.label;
-    reviewModelSelect.appendChild(option);
-    reviewModelDescriptions[value] = info.description;
-  }
-  reviewModelSelect.value = opts.default_model;
-  reviewModelHelp.textContent = reviewModelDescriptions[opts.default_model] || "";
+  renderModelOptions(reviewModelSelect, opts, reviewModelDescriptions, isPersonalProject);
+  reviewModelHelp.textContent = reviewModelDescriptions[reviewModelSelect.value] || "";
   reviewModelSelect.addEventListener("change", () => {
     reviewModelHelp.textContent = reviewModelDescriptions[reviewModelSelect.value] || "";
   });
@@ -838,7 +893,12 @@ async function runReview() {
     currentReviewId = reviewId;
     pollReview(reviewId);
   } catch (e) {
-    reviewStatusText.textContent = `錯誤：${e.message}`;
+    if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
+      showToast(e.message, "error");
+      reviewProgress.hidden = true;
+    } else {
+      reviewStatusText.textContent = `錯誤：${e.message}`;
+    }
     isProcessing = false;
     refreshLockStates();
   }
@@ -1011,7 +1071,12 @@ rerunBtn.addEventListener("click", async () => {
     currentReviewId = reviewId;
     pollReview(reviewId);
   } catch (e) {
-    reviewStatusText.textContent = `錯誤：${e.message}`;
+    if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
+      showToast(e.message, "error");
+      reviewProgress.hidden = true;
+    } else {
+      reviewStatusText.textContent = `錯誤：${e.message}`;
+    }
     isProcessing = false;
     refreshLockStates();
   }
