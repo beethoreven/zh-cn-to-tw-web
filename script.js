@@ -1073,14 +1073,14 @@ function renderNewReviewLogs(logs) {
 function renderFindings(findings) {
   reviewFindingsSection.hidden = false;
   findingsList.innerHTML = "";
-  findingsCount.textContent = `共找到 ${findings.length} 筆建議（預設全選，取消勾選代表不套用）`;
+  findingsCount.textContent = `共找到 ${findings.length} 筆建議（預設全不選，勾選代表套用）`;
 
   for (const finding of findings) {
     const li = document.createElement("li");
     li.className = "finding-item";
     li.innerHTML = `
       <label class="finding-checkbox-row">
-        <input type="checkbox" class="finding-checkbox" data-id="${escapeHtml(String(finding.id))}" checked />
+        <input type="checkbox" class="finding-checkbox" data-id="${escapeHtml(String(finding.id))}" />
         <span class="finding-diff">
           <span class="finding-original">${escapeHtml(finding.original)}</span>
           →
