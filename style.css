@@ -53,6 +53,21 @@ body {
   line-height: normal;
 }
 
+.desktop-signin-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-signin-btn:hover {
+  opacity: 0.9;
+}
+
 .admin-toggle-btn {
   background: transparent;
   border: 1px solid var(--border);

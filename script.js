@@ -275,22 +275,34 @@ function handleCredentialResponse(response) {
 }
 
 function initGoogleSignIn() {
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: handleCredentialResponse,
-    auto_select: true,
-  });
-  google.accounts.id.renderButton(googleSigninBtnEl, {
-    theme: "outline",
-    size: "medium",
-    shape: "pill",
-    text: "signin",
-    // 不給 width 的話，Google 這個元件會自己抓容器當下的寬度來決定要不要
-    // 顯示文字——桌面版 App 的 WKWebView 環境下量到的寬度不穩定，曾經
-    // 只顯示 G 圖示、沒有「使用 Google 帳戶登入」文字，給一個固定寬度
-    // 確保文字版本穩定顯示，不受容器寬度量測結果影響。
-    width: 240,
-  });
+  if (DESKTOP_MODE) {
+    // 桌面版 App：不用 Google Identity Services 在內嵌 WebView 裡跑登入
+    // 彈出視窗——Google 會限制/降級內嵌瀏覽器裡的登入流程（實測撞過
+    // window.open 被擋、CSP 錯誤、帳戶選擇視窗越開越多），改成點按鈕
+    // 時請桌面殼用系統瀏覽器開一個真正的分頁完成登入，殼會在登入成功後
+    // 自己呼叫 handleCredentialResponse()，後續驗證/儲存/更新 UI 完全
+    // 沿用跟瀏覽器版一樣的邏輯，不用另外寫一份。
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "desktop-signin-btn";
+    btn.textContent = "使用 Google 帳戶登入";
+    btn.addEventListener("click", () => {
+      window.webkit.messageHandlers.desktopSignIn.postMessage({});
+    });
+    googleSigninBtnEl.replaceChildren(btn);
+  } else {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleCredentialResponse,
+      auto_select: true,
+    });
+    google.accounts.id.renderButton(googleSigninBtnEl, {
+      theme: "outline",
+      size: "medium",
+      shape: "pill",
+      text: "signin",
+    });
+  }
 
   if (currentIdToken) {
     // localStorage 裡已經有存起來的 token，直接拿去問後端還有沒有效，
@@ -299,10 +311,14 @@ function initGoogleSignIn() {
     checkAuthStatus();
   } else {
     setPageLocked(true);
-    // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；
-    // 不保證成功（可能被第三方 cookie 限制擋掉），失敗就維持鎖住，
-    // 使用者自己按登入按鈕即可
-    google.accounts.id.prompt();
+    if (!DESKTOP_MODE) {
+      // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；
+      // 不保證成功（可能被第三方 cookie 限制擋掉），失敗就維持鎖住，
+      // 使用者自己按登入按鈕即可。桌面版沒有這個機制（系統瀏覽器登入
+      // 走一次性流程，不是常駐在頁面裡的 GSI），過期後使用者自己
+      // 重新點登入按鈕即可，checkAuthStatus 401 時本來就會鎖回去。
+      google.accounts.id.prompt();
+    }
   }
 }
 
@@ -310,9 +326,11 @@ initGoogleSignIn();
 
 // ID Token 大約 1 小時過期，但使用者可能開著分頁很久，每 45 分鐘嘗試
 // 一次靜默重新登入，成功的話 handleCredentialResponse 會自動把新 token
-// 存回 localStorage，盡量不要讓使用者用到一半突然被登出
+// 存回 localStorage，盡量不要讓使用者用到一半突然被登出。桌面版沒有
+// 初始化 google.accounts.id（見上方 initGoogleSignIn），呼叫 prompt()
+// 會直接出錯，這裡要排除。
 setInterval(() => {
-  if (currentIdToken) {
+  if (currentIdToken && !DESKTOP_MODE) {
     google.accounts.id.prompt();
   }
 }, 45 * 60 * 1000);
