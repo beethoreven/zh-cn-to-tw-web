@@ -1,10 +1,24 @@
+const desktopParams = new URLSearchParams(window.location.search);
+
 // 本機開發時（用 python3 -m http.server 之類的方式在 localhost/127.0.0.1
-// 開這個前端）自動改打本機後端，不用手動改這行、也不用擔心改完忘記
-// 改回來就 push——正式環境（GitHub Pages）的 hostname 一定不是這兩個，
-// 不會受影響。
-const API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
-  ? "http://localhost:5001"
-  : "https://zh-cn-to-tw-backend.onrender.com";
+// 開這個前端）預設自動改打本機後端，不用手動改這行、也不用擔心改完
+// 忘記改回來就 push——正式環境（GitHub Pages）的 hostname 一定不是
+// 這兩個，不會受影響。
+//
+// 網址如果帶 ?apiBase=<url>，優先用這個值，不管目前 hostname 是什麼。
+// 這讓「本機測試還沒 push 上去的前端改動」跟「這次呼叫要打本機後端
+// 還是正式 Render 後端」變成兩個互相獨立的選擇，不再綁死在一起：
+// 桌面殼在 WEB_BASE_URL_OVERRIDE（見 zh-cn-to-tw-mac/ContentView.swift）
+// 指到本機 http.server 測試還沒發布的前端時，會一併帶上 apiBase 指到
+// 正式 Render，這樣本機測前端改動就不需要另外再開一個本機
+// zh-cn-to-tw-backend（app.py）+ 本機 DB，直接吃正式環境的 API/DB，
+// 跟使用者實際會遇到的行為一致，也不用每次都記得手動同步兩邊資料。
+const API_BASE_OVERRIDE = desktopParams.get("apiBase");
+const API_BASE =
+  API_BASE_OVERRIDE ||
+  (["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://localhost:5001"
+    : "https://zh-cn-to-tw-backend.onrender.com");
 
 // ===== 桌面版 App 偵測 =====
 // 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶
@@ -13,7 +27,6 @@ const API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname)
 // 再把辨識完的文字轉送給 Render 後端做潤飾，而不是像瀏覽器版那樣把整份
 // PDF 直接丟給 Render（Render 免費方案扛不住 PaddleOCR，見 desktop_app_plan
 // 設計文件）。純瀏覽器開啟（網址沒有這些參數）行為完全不受影響。
-const desktopParams = new URLSearchParams(window.location.search);
 const DESKTOP_MODE = desktopParams.get("desktop") === "1";
 const DESKTOP_OCR_PORT = desktopParams.get("ocrPort");
 const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
@@ -33,17 +46,26 @@ setInterval(pingKeepAlive, 5 * 60 * 1000);
 
 // ===== Google 登入 =====
 //
-// 跟 fireless-war-web 同樣的驗證方式（Google Identity Services + 後端
-// 白名單），但這裡刻意多做一件事：把 ID Token 存進 localStorage，不是
-// 只放在 JS 變數裡。localStorage 天生同網域跨分頁共用、重新整理不會
-// 消失，只有明確登出（removeItem）或使用者自己清瀏覽器資料才會不見，
-// 這樣才符合「重新整理不會登出、另開分頁也在登入狀態、只有登出才清除」
-// 的需求。fireless-war-web 沒存 token，靠的是 Google 自己的靜默登入
-// (prompt) 嘗試恢復，但那個機制常被瀏覽器的第三方 cookie 限制擋掉，
-// 不可靠。
+// 跟 fireless-war-web 同樣用 Google Identity Services + 後端白名單驗證
+// 身份，但這裡多做一層：Google 登入成功後拿到的 ID Token 只用來跟後端
+// 換一次應用程式自己簽發的 session token（/auth/login，見後端
+// auth_utils/sessions.py），存進 localStorage 的是這個 session token，
+// 不是 Google ID Token 本身。這麼做是因為 Google ID Token 效期固定約
+// 1 小時，直接拿它當長效憑證用，會讓長時間的工作階段（Stage 1/校對，
+// 尤其遇到額度限制、重試+指數退避時）每小時就被打斷一次，逼使用者
+// 重新登入，甚至讓已經算好、要花錢的 LLM 結果來不及存下來（實測發生
+// 過）。session token 效期是滑動式的（只要還在用就不會過期，見後端
+// 說明），不受 Google 那個固定 1 小時的限制。
+//
+// localStorage 天生同網域跨分頁共用、重新整理不會消失，只有明確登出
+// （removeItem，且會呼叫 /auth/logout 讓後端也刪掉這筆 session）或
+// 使用者自己清瀏覽器資料才會不見，這樣才符合「重新整理不會登出、另開
+// 分頁也在登入狀態、只有登出才清除」的需求。fireless-war-web 沒存
+// token，靠的是 Google 自己的靜默登入 (prompt) 嘗試恢復，但那個機制
+// 常被瀏覽器的第三方 cookie 限制擋掉，不可靠。
 
 const GOOGLE_CLIENT_ID = "415031055130-73moi9aantfm5hjojmt1r0isk2uo35mr.apps.googleusercontent.com";
-const ID_TOKEN_STORAGE_KEY = "ztw_id_token";
+const SESSION_TOKEN_STORAGE_KEY = "ztw_session_token";
 
 const containerEl = document.querySelector(".container");
 // 鎖定效果特意套用在 .main-column（不是整個 .container）：CSS 的
@@ -61,11 +83,51 @@ const accountDropdownEl = document.getElementById("account-dropdown");
 const btnSignOut = document.getElementById("btn-sign-out");
 const toastEl = document.getElementById("toast");
 
-let currentIdToken = localStorage.getItem(ID_TOKEN_STORAGE_KEY);
+let currentSessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
 let currentAuthorized = false;
 let currentIsAdmin = false;
 let showingAdminView = false;
 let toastTimer = null;
+
+// currentSessionToken 是應用程式自己簽發的 session token（見上面
+// 「Google 登入」區塊的說明），效期是滑動式的，正常使用下不會在工作
+// 到一半過期——但 session 還是可能因為其他原因失效（例如管理員在後台
+// 把這個帳號停用、或是真的放到滑動視窗過期），這時 401 不代表「沒登入
+// 過」，代表的是「登入過，但這個 token 剛好在這個時間點失效」——如果
+// 跟真的沒登入一樣直接判定失敗/清掉狀態，會讓已經花了 LLM 費用算出來
+// 的結果（校對 findings、Stage 1 結果）沒辦法存下來，使用者只能重新
+// 跑一次，等於白花錢。這裡讓 authedFetch 在撞到 401 時就地觸發一次
+// 重新登入、等到拿到新 token 後用同一組參數自動重打一次，呼叫端完全
+// 不用知道中間發生過這件事。如果是管理員主動停用帳號，重新登入本身
+// 會在 /auth/login 卡在白名單檢查那關失敗，不會無限重試，行為正確。
+let reauthInFlight = false;
+let reauthResolvers = [];
+
+function triggerReauth() {
+  if (DESKTOP_MODE) {
+    window.webkit.messageHandlers.desktopSignIn.postMessage({});
+  } else {
+    google.accounts.id.prompt();
+  }
+}
+
+// 同一次過期只觸發一次重新登入，不管同時有幾個請求撞到 401——不然背景
+// 輪詢加上使用者手動點的按鈕，可能一次跳出好幾個系統瀏覽器分頁
+function requestReauthOnce() {
+  if (reauthInFlight) return;
+  reauthInFlight = true;
+  showToast("登入已過期，請重新登入以繼續（目前的工作進度不會遺失）", "error");
+  triggerReauth();
+}
+
+// 等下一次重新登入成功——刻意不設逾時：使用者可能過一段時間才回來完成
+// 系統瀏覽器那邊的登入，讓呼叫端這樣等著，好過顯示「工作不見了」這種
+// 誤導訊息逼使用者重新上傳/重新校對
+function waitForReauth() {
+  return new Promise((resolve) => {
+    reauthResolvers.push(resolve);
+  });
+}
 let appDataLoaded = false; // Stage 1/2 的選項、使用量等資料只需要在授權後載入一次
 let adminDataLoaded = false; // 管理員介面的下拉選單資料只需要在第一次打開時載入一次
 
@@ -142,15 +204,26 @@ function showToast(message, type) {
 }
 
 function authHeaders() {
-  return currentIdToken ? { Authorization: `Bearer ${currentIdToken}` } : {};
+  return currentSessionToken ? { Authorization: `Bearer ${currentSessionToken}` } : {};
 }
 
 // 除了 /api/health（keep-alive 用，刻意不需要登入）以外，其餘所有打
 // 後端的 fetch 都要透過這支，自動帶上登入憑證——後端每一支保護路由
 // 都會驗證這個 token，前端這裡只是負責把它附上去。
-function authedFetch(url, options = {}) {
+//
+// 撞到 401 時會就地觸發一次重新登入，等到新 token 後用同一組 options
+// 自動重打一次（見上面 requestReauthOnce/waitForReauth 的說明）——
+// options.body 如果是字串（JSON.stringify 的結果）或 FormData，重打
+// 完全沒問題：字串本來就能重複使用，FormData 也不會因為傳給 fetch()
+// 一次就被消耗掉，兩種在這個檔案裡目前用到的 body 型別都安全。
+async function authedFetch(url, options = {}) {
   const headers = { ...(options.headers || {}), ...authHeaders() };
-  return fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers });
+  if (res.status !== 401 || !currentSessionToken) return res;
+  requestReauthOnce();
+  await waitForReauth();
+  const retryHeaders = { ...(options.headers || {}), ...authHeaders() };
+  return fetch(url, { ...options, headers: retryHeaders });
 }
 
 // 沒登入或未授權時，把主要內容區塊都鎖住（含純顯示的區塊，例如使用量
@@ -189,10 +262,10 @@ adminToggleBtnEl.addEventListener("click", () => {
 });
 
 function showSignedOutUI() {
-  currentIdToken = null;
+  currentSessionToken = null;
   currentAuthorized = false;
   currentIsAdmin = false;
-  localStorage.removeItem(ID_TOKEN_STORAGE_KEY);
+  localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
   googleSigninBtnEl.hidden = false;
   accountSlotEl.hidden = true;
   accountDropdownEl.hidden = true;
@@ -226,7 +299,7 @@ function showSignedInUI(email) {
 }
 
 async function checkAuthStatus() {
-  if (!currentIdToken) {
+  if (!currentSessionToken) {
     setPageLocked(true);
     return;
   }
@@ -268,10 +341,49 @@ async function checkAuthStatus() {
   }
 }
 
-function handleCredentialResponse(response) {
-  currentIdToken = response.credential;
-  localStorage.setItem(ID_TOKEN_STORAGE_KEY, currentIdToken);
-  checkAuthStatus();
+// Google 這裡回傳的 response.credential 是 Google ID Token，效期固定
+// 約 1 小時——不能直接拿它當長效憑證用（見上面 reauthInFlight 附近的
+// 說明），這裡换一次應用程式自己的 session token（/auth/login，見後端
+// auth_utils/sessions.py），之後才是真正撐住整個工作階段的憑證。
+// 不管這次重新登入成功還是失敗，都要把 reauthInFlight 重置、把在等
+// waitForReauth() 的呼叫端放行——失敗時如果漏做這件事（例如帳號已經被
+// 管理員停用，/auth/login 回 403；或換 session 這次呼叫本身網路失敗），
+// reauthInFlight 會永遠卡在 true：所有背景輪詢會因為
+// `if (reauthInFlight) return` 永遠跳過，之後任何 401 也再也不會觸發
+// 新的一次重新登入（requestReauthOnce 一樣會被這個旗標擋掉），使用者
+// 只能整頁重新整理才能恢復——這是比「單純登入失敗」更糟的卡死狀態，
+// 一定要在成功/失敗兩條路徑都做這件事。
+function settleReauthWaiters() {
+  reauthInFlight = false;
+  const resolvers = reauthResolvers;
+  reauthResolvers = [];
+  resolvers.forEach((resolve) => resolve());
+}
+
+async function handleCredentialResponse(response) {
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_token: response.credential }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showSignedOutUI();
+      settleReauthWaiters();
+      showToast(data.error || "登入失敗，請再試一次", "error");
+      return;
+    }
+
+    currentSessionToken = data.session_token;
+    localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, currentSessionToken);
+    settleReauthWaiters();
+    checkAuthStatus();
+  } catch (err) {
+    console.error("[auth] 登入換發 session 失敗：", err);
+    settleReauthWaiters();
+    showToast("無法完成登入，請檢查網路連線後再試一次", "error");
+  }
 }
 
 function initGoogleSignIn() {
@@ -304,7 +416,7 @@ function initGoogleSignIn() {
     });
   }
 
-  if (currentIdToken) {
+  if (currentSessionToken) {
     // localStorage 裡已經有存起來的 token，直接拿去問後端還有沒有效，
     // 不用等 Google 的靜默登入——這就是跟 fireless-war-web 不同、
     // 「重新整理/開新分頁不會登出」的關鍵
@@ -315,25 +427,14 @@ function initGoogleSignIn() {
       // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；
       // 不保證成功（可能被第三方 cookie 限制擋掉），失敗就維持鎖住，
       // 使用者自己按登入按鈕即可。桌面版沒有這個機制（系統瀏覽器登入
-      // 走一次性流程，不是常駐在頁面裡的 GSI），過期後使用者自己
-      // 重新點登入按鈕即可，checkAuthStatus 401 時本來就會鎖回去。
+      // 走一次性流程，不是常駐在頁面裡的 GSI），使用者自己按登入按鈕
+      // 即可，checkAuthStatus 401 時本來就會鎖回去。
       google.accounts.id.prompt();
     }
   }
 }
 
 initGoogleSignIn();
-
-// ID Token 大約 1 小時過期，但使用者可能開著分頁很久，每 45 分鐘嘗試
-// 一次靜默重新登入，成功的話 handleCredentialResponse 會自動把新 token
-// 存回 localStorage，盡量不要讓使用者用到一半突然被登出。桌面版沒有
-// 初始化 google.accounts.id（見上方 initGoogleSignIn），呼叫 prompt()
-// 會直接出錯，這裡要排除。
-setInterval(() => {
-  if (currentIdToken && !DESKTOP_MODE) {
-    google.accounts.id.prompt();
-  }
-}, 45 * 60 * 1000);
 
 accountSlotEl.addEventListener("click", () => {
   accountDropdownEl.hidden = !accountDropdownEl.hidden;
@@ -356,6 +457,12 @@ btnSignOut.addEventListener("click", (e) => {
   if (!DESKTOP_MODE) {
     google.accounts.id.disableAutoSelect();
   }
+  // 讓後端也把這個 session 刪掉，不是只有前端自己忘記它——不然同一個
+  // token 理論上還能繼續打 API 直到滑動視窗自然過期，登出應該要是
+  // 真的登出。這裡刻意不 await：失敗（例如網路問題）也不該擋住使用者
+  // 登出，前端該清的狀態一樣清，最壞情況只是後端那筆 session 記錄要
+  // 等滑動視窗自然過期，不影響使用者這邊「已經登出」的體感。
+  fetch(`${API_BASE}/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {});
   showSignedOutUI();
 });
 
@@ -668,16 +775,17 @@ submitBtn.addEventListener("click", async () => {
       ocrFormData.append("dpi", dpiInput.value);
       ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
 
-      const ocrRes = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf`, {
+      const startRes = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf/start`, {
         method: "POST",
         headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
         body: ocrFormData,
       });
-      if (!ocrRes.ok) {
-        const err = await ocrRes.json();
+      if (!startRes.ok) {
+        const err = await startRes.json();
         throw new Error(err.error || "本機 OCR 辨識失敗");
       }
-      const { pages } = await ocrRes.json();
+      const { job_id: ocrJobId } = await startRes.json();
+      const { pages } = await pollLocalOcrJob(ocrJobId);
 
       statusText.textContent = "上傳中";
       const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
@@ -722,8 +830,48 @@ submitBtn.addEventListener("click", async () => {
   }
 });
 
+// 本機 ocr-service 的 /ocr/pdf/start 只負責啟動、立刻回 job_id，實際的
+// 逐頁 OCR 在它自己的背景執行緒跑，這裡輪詢 /ocr/pdf/status/<job_id> 拿
+// 進度——跟下面 pollJob() 對 Render 後端 job 的輪詢是同一種模式，只是這支
+// 是本機服務、沒有 authedFetch 需要的登入 token，改帶 X-OCR-Token。
+function pollLocalOcrJob(jobId) {
+  return new Promise((resolve, reject) => {
+    const timer = setInterval(async () => {
+      let res, job;
+      try {
+        res = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf/status/${jobId}`, {
+          headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+        });
+        job = await res.json();
+      } catch (e) {
+        // 網路暫時性錯誤，下一輪再試，不要整個停掉（跟 pollJob 一致的處理方式）
+        return;
+      }
+
+      if (!res.ok || job.status === "failed") {
+        clearInterval(timer);
+        reject(new Error(job.error || "本機 OCR 辨識失敗"));
+        return;
+      }
+
+      if (job.status === "done") {
+        clearInterval(timer);
+        resolve(job);
+        return;
+      }
+
+      statusText.textContent = job.total_pages
+        ? `本機 OCR 辨識中（第 ${job.current_page}/${job.total_pages} 頁）`
+        : "本機 OCR 辨識中";
+    }, 1500);
+  });
+}
+
 function pollJob(jobId) {
   pollTimer = setInterval(async () => {
+    // 已經有一次重新登入在等使用者完成，這一輪先跳過，不要每 1.5 秒
+    // 就再打一次注定又是 401 的請求（見 requestReauthOnce 的說明）
+    if (reauthInFlight) return;
     let res, job;
     try {
       res = await authedFetch(`${API_BASE}/api/jobs/${jobId}`);
@@ -1021,6 +1169,7 @@ async function runReview() {
 
 function pollReview(reviewId) {
   reviewPollTimer = setInterval(async () => {
+    if (reauthInFlight) return;
     let res, review;
     try {
       res = await authedFetch(`${API_BASE}/api/reviews/${reviewId}`);
@@ -1455,9 +1604,8 @@ function initPermissionsPanel() {
   const fieldsEl = document.getElementById("admin-permission-fields");
   const idEl = document.getElementById("admin-permission-id");
   const roleEl = document.getElementById("admin-permission-role");
-  const opusEl = document.getElementById("admin-permission-opus");
   const haikuEl = document.getElementById("admin-permission-haiku");
-  const editableFields = [roleEl, opusEl, haikuEl];
+  const editableFields = [roleEl, haikuEl];
 
   let currentPermissionId = null;
   let editing = false;
@@ -1494,7 +1642,6 @@ function initPermissionsPanel() {
       editing = false;
       idEl.value = permission.id;
       roleEl.value = permission.role;
-      opusEl.value = permission.allowed_opus;
       haikuEl.value = permission.allowed_haiku;
       fieldsEl.hidden = false;
       setFieldsDisabled(editableFields, true);
@@ -1519,7 +1666,6 @@ function initPermissionsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: roleEl.value,
-          allowed_opus: Number(opusEl.value),
           allowed_haiku: Number(haikuEl.value),
         }),
       });

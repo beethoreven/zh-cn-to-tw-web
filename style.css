@@ -333,13 +333,25 @@ body {
 .page-layout {
   display: flex;
   gap: 1.5rem;
-  align-items: stretch;
+  /* 原本是 stretch（flex 預設值）：右邊 .main-column 隨著校對結果越
+     跑越長時，左邊 .sidebar-column 會被撐成一樣高，導致「阿舍老師的
+     叮嚀」那個框看起來一直往下長，底下卻是一大片空白（文字本身沒有
+     變多，只是框被撐高）。改成 flex-start 讓每一欄各自照自己內容的
+     高度，不互相牽連。 */
+  align-items: flex-start;
 }
 
 .sidebar-column {
   flex: 0 1 260px;
   min-width: 220px;
   display: flex;
+  /* 「固定住」：右欄內容變長時，這裡不但不再被撐高（見上面
+     align-items 的說明），還要在使用者往下捲動時留在畫面上，不要
+     捲一捲就整個消失在畫面外——比起單純「不長高」更符合「阿舍老師的
+     叮嚀」這種提示性內容應該要一直看得到的用途。90px 大概對應
+     .top-bar 的高度加一點呼吸空間，避免緊貼著視窗頂端。 */
+  position: sticky;
+  top: 90px;
 }
 
 .sidebar-column .notice-box {
@@ -373,6 +385,10 @@ body {
   .sidebar-column {
     flex: initial;
     min-width: 0;
+    /* 窄螢幕改成上下疊放（見上面 .page-layout 的 flex-direction:
+       column），這時候「黏在畫面上」的 sticky 定位沒有意義，還會讓
+       這個區塊卡在畫面中間某處不動，反而擋住下面的內容，取消掉。 */
+    position: static;
   }
 
   .columns {
