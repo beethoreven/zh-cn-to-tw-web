@@ -350,7 +350,12 @@ btnSignOut.addEventListener("click", (e) => {
   // account-slot 自己的「切換下拉選單開關」監聽器，把 showSignedOutUI()
   // 剛關好的下拉選單狀態又扳回開啟——擋掉冒泡，避免這個互相打架
   e.stopPropagation();
-  google.accounts.id.disableAutoSelect();
+  // 桌面版沒有呼叫 google.accounts.id.initialize()（改用系統瀏覽器
+  // 登入，見 initGoogleSignIn），這個物件雖然因為 <script> 標籤還是
+  // 存在，但在沒初始化過的狀態下呼叫它的方法，行為沒有保證，不要冒險。
+  if (!DESKTOP_MODE) {
+    google.accounts.id.disableAutoSelect();
+  }
   showSignedOutUI();
 });
 
