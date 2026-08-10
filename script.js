@@ -773,7 +773,15 @@ downloadBtn.addEventListener("click", async () => {
   }
 });
 
+// 只有使用者本來就停留在（或接近）最底部時，新 log 進來才跟著捲到底；
+// 如果使用者已經往上捲去看之前的內容，新 log 進來不該把他們強制拉回
+// 最底部，不然完全沒辦法邊跑邊往上看舊的 log
+function isNearBottom(el, threshold = 24) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+}
+
 function renderNewLogs(logs) {
+  const shouldStickToBottom = isNearBottom(logList);
   for (let i = renderedLogCount; i < logs.length; i++) {
     const entry = logs[i];
     const li = document.createElement("li");
@@ -784,7 +792,9 @@ function renderNewLogs(logs) {
     logList.appendChild(li);
   }
   renderedLogCount = logs.length;
-  logList.scrollTop = logList.scrollHeight;
+  if (shouldStickToBottom) {
+    logList.scrollTop = logList.scrollHeight;
+  }
 }
 
 // --- Stage 2：校對 ---
@@ -1044,6 +1054,7 @@ function pollReview(reviewId) {
 }
 
 function renderNewReviewLogs(logs) {
+  const shouldStickToBottom = isNearBottom(reviewLogList);
   for (let i = renderedReviewLogCount; i < logs.length; i++) {
     const entry = logs[i];
     const li = document.createElement("li");
@@ -1054,7 +1065,9 @@ function renderNewReviewLogs(logs) {
     reviewLogList.appendChild(li);
   }
   renderedReviewLogCount = logs.length;
-  reviewLogList.scrollTop = reviewLogList.scrollHeight;
+  if (shouldStickToBottom) {
+    reviewLogList.scrollTop = reviewLogList.scrollHeight;
+  }
 }
 
 function renderFindings(findings) {
