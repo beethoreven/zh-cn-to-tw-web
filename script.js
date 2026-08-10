@@ -285,6 +285,11 @@ function initGoogleSignIn() {
     size: "medium",
     shape: "pill",
     text: "signin",
+    // 不給 width 的話，Google 這個元件會自己抓容器當下的寬度來決定要不要
+    // 顯示文字——桌面版 App 的 WKWebView 環境下量到的寬度不穩定，曾經
+    // 只顯示 G 圖示、沒有「使用 Google 帳戶登入」文字，給一個固定寬度
+    // 確保文字版本穩定顯示，不受容器寬度量測結果影響。
+    width: 240,
   });
 
   if (currentIdToken) {

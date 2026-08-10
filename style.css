@@ -40,7 +40,17 @@ body {
 }
 
 .google-signin-btn {
+  /* 消除容器本身因為包住 inline-block 按鈕而多出來的基準線空白間距。
+     line-height 會被子元素繼承，Google 按鈕自己內部生成的文字（例如
+     「登入」）也會跟著被壓成 line-height: 0、整個文字方塊高度變 0、
+     文字實質上完全看不見（顏色、opacity 都正常，純粹是框高是 0）——
+     下面這條規則把繼承鏈在子元素這層重設回來，只讓最外層容器保留
+     這個空白間距修正，不影響裡面 Google 自己渲染的內容。 */
   line-height: 0;
+}
+
+.google-signin-btn * {
+  line-height: normal;
 }
 
 .admin-toggle-btn {
