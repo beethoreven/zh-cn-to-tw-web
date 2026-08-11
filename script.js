@@ -1,24 +1,22 @@
 const desktopParams = new URLSearchParams(window.location.search);
 
-// 本機開發時（用 python3 -m http.server 之類的方式在 localhost/127.0.0.1
-// 開這個前端）預設自動改打本機後端，不用手動改這行、也不用擔心改完
-// 忘記改回來就 push——正式環境（GitHub Pages）的 hostname 一定不是
-// 這兩個，不會受影響。
+// 預設「同源」：這份前端現在是由本機的 zh-cn-to-tw-backend 自己供應的
+// （見該 repo 的 WEB_STATIC_DIR 設定），網頁跟 API 在同一個 origin
+// （http://127.0.0.1:<backend 動態 port>），所以 API 路徑用相對路徑就好，
+// 不需要、也不應該寫死任何主機位址或 port——port 每次啟動都不一樣。
+// 同源還有一個附帶好處：完全不會有 CORS 問題。
 //
-// 網址如果帶 ?apiBase=<url>，優先用這個值，不管目前 hostname 是什麼。
-// 這讓「本機測試還沒 push 上去的前端改動」跟「這次呼叫要打本機後端
-// 還是正式 Render 後端」變成兩個互相獨立的選擇，不再綁死在一起：
-// 桌面殼在 WEB_BASE_URL_OVERRIDE（見 zh-cn-to-tw-mac/ContentView.swift）
-// 指到本機 http.server 測試還沒發布的前端時，會一併帶上 apiBase 指到
-// 正式 Render，這樣本機測前端改動就不需要另外再開一個本機
-// zh-cn-to-tw-backend（app.py）+ 本機 DB，直接吃正式環境的 API/DB，
-// 跟使用者實際會遇到的行為一致，也不用每次都記得手動同步兩邊資料。
+// 例外只有一個：如果這份前端是從 GitHub Pages（*.github.io）載入的舊
+// 純網頁版，那裡沒有 API 可以打，只能繼續打 Render。桌面版 App 已經
+// 不走這條路了（整份前端包在 .app 裡、由本機 backend 供應）。
+//
+// 網址帶 ?apiBase=<url> 可以覆寫以上判斷，測試時要指到別的後端用。
 const API_BASE_OVERRIDE = desktopParams.get("apiBase");
 const API_BASE =
-  API_BASE_OVERRIDE ||
-  (["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://localhost:5001"
-    : "https://zh-cn-to-tw-backend.onrender.com");
+  API_BASE_OVERRIDE ??
+  (window.location.hostname.endsWith("github.io")
+    ? "https://zh-cn-to-tw-backend.onrender.com"
+    : "");
 
 // ===== 桌面版 App 偵測 =====
 // 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶
