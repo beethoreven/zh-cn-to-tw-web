@@ -35,6 +35,14 @@
         <section class="notice-box" id="teacher-notice-box">
           <h2>阿舍老師的叮嚀</h2>
           <p id="teacher-notice-text" class="notice-text">載入中…</p>
+          <!-- 桌面版 App 用 file:// 載入整個頁面時，JS 主動發起的
+               fetch()/XMLHttpRequest 對 file:// 都會被 WKWebView 擋掉
+               （allowingReadAccessTo 的授權只涵蓋瀏覽器自己的資源載入
+               管線，例如這個 iframe 或 <script src>/<link>，不涵蓋 JS
+               主動發的請求）。改用這個隱藏 iframe 載入 teacher-notice.txt，
+               走跟 script.js/style.css 一樣的載入管線，file:// 跟
+               http(s) 都能正常運作，見 script.js 的 loadTeacherNotice()。 -->
+          <iframe id="teacher-notice-frame" src="teacher-notice.txt" hidden></iframe>
         </section>
       </div>
 
