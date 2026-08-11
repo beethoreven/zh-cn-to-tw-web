@@ -352,11 +352,24 @@ body {
      .top-bar 的高度加一點呼吸空間，避免緊貼著視窗頂端。 */
   position: sticky;
   top: 90px;
+  /* 這行是讓上面的 sticky 真正有效的關鍵，不是單純的視覺限制。
+     sticky 元素只能在「自己的容器還剩多少空間」的範圍內滑動：叮嚀文字
+     一長，這一欄就變成 .page-layout 裡最高的一欄，容器高度於是等於它
+     自己的高度，可滑動空間歸零，sticky 就完全失效、退化成跟著捲走
+     （實測：文字載入後這一欄 3550px、容器也是 3550px，往下捲時
+     top 從 229 一路變成 -671，完全沒有黏住）。把這一欄限制在不超過
+     一個視窗的高度，它才會比容器矮、才有空間可以黏。 */
+  max-height: calc(100vh - 90px - 1.5rem);
 }
 
 .sidebar-column .notice-box {
   flex: 1 1 auto;
   margin-bottom: 0;
+  /* flex 子項目的 min-height 預設是 auto（不會縮到比內容小），不覆寫成 0
+     的話下面的 overflow-y 不會生效，文字還是會把框撐破。 */
+  min-height: 0;
+  /* 文字超過上面限制的高度時，在這個框裡自己捲，不要把整欄撐高。 */
+  overflow-y: auto;
 }
 
 .main-column {
@@ -389,6 +402,10 @@ body {
        column），這時候「黏在畫面上」的 sticky 定位沒有意義，還會讓
        這個區塊卡在畫面中間某處不動，反而擋住下面的內容，取消掉。 */
     position: static;
+    /* 上面那個 max-height 只是為了讓 sticky 有作用才加的，這裡既然不
+       sticky 了就要一併解除，不然在窄螢幕會平白把叮嚀壓成一個要自己
+       捲的小框（上下疊放時它本來就可以想多高就多高）。 */
+    max-height: none;
   }
 
   .columns {
