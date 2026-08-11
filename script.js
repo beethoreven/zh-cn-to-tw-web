@@ -598,20 +598,20 @@ function validateBoundedInput(input, fieldLabel) {
 // 桌面版用 file:// 載入這個頁面，file:// 底下 JS 在執行期沒有任何辦法
 // 讀到「同目錄另一個檔案」的內容（fetch 規格明確禁止對 file:// 發請求；
 // XMLHttpRequest、隱藏 <iframe> 實測也都被 WKWebView 擋下來）。所以不
-// 直接讀本機檔案，改跟其他 API 一樣打 Render 的 /api/teacher-notice
+// 直接讀本機檔案，改跟其他 API 一樣打 Render 的 /api/ta-notice
 // （見 zh-cn-to-tw-backend 的 app.py）——那支路由本身不要求登入，內容
 // 來源是 zh-cn-to-tw-backend repo 根目錄的 ta-notice.txt，維護者只要
 // 編輯改動那份檔案、commit、push、部署即可，這裡跟桌面版打包都不用
 // 跟著動。瀏覽器版（GitHub Pages）跟桌面版走同一條路徑，不用再分兩
 // 套邏輯。
-async function initTeacherNotice() {
-  const teacherNoticeText = document.getElementById("teacher-notice-text");
+async function initTaNotice() {
+  const taNoticeText = document.getElementById("ta-notice-text");
   try {
-    const res = await fetch(`${API_BASE}/api/teacher-notice`);
+    const res = await fetch(`${API_BASE}/api/ta-notice`);
     const data = await res.json();
-    teacherNoticeText.textContent = data.text || "（目前沒有內容）";
+    taNoticeText.textContent = data.text || "（目前沒有內容）";
   } catch (e) {
-    teacherNoticeText.textContent = "（載入失敗）";
+    taNoticeText.textContent = "（載入失敗）";
   }
 }
 
@@ -1463,10 +1463,10 @@ refreshLockStates();
 // checkAuthStatus() 確認授權成功後才觸發（見上方「Google 登入」區塊），
 // 避免頁面一載入就打一堆註定失敗的請求。
 //
-// initTeacherNotice 是例外：內容是純靜態檔案、不需要登入，所以無論有
+// initTaNotice 是例外：內容是純靜態檔案、不需要登入，所以無論有
 // 沒有登入都直接載入，且不受下面的 page-locked 視覺鎖定影響
 // （CSS 裡對 .sidebar-column 有特別排除）。
-initTeacherNotice();
+initTaNotice();
 
 // ===== 管理員介面 =====
 
