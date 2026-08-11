@@ -865,6 +865,59 @@ function pollLocalOcrJob(jobId) {
   });
 }
 
+// ===== 工作被伺服器重啟打斷時的處理 =====
+// Render 重啟（部署、平台搬機器）會讓正在跑的背景工作直接消失。後端
+// 啟動時會把這種工作標記成 interrupted（見該 repo 的 db_utils/job_store.py），
+// 前端收到這個狀態就跳這個對話窗，讓使用者自己決定要再等等看還是收尾。
+//
+// 「重試」重試的是「跟後端要進度」，不是叫後端繼續做——工作真的被中斷
+// 之後不會自己接續。所以重試通常只有在「其實只是暫時連不上」的情況下
+// 有用；真的被重啟打斷的話，使用者要選「結束此階段工作」，把中斷前
+// 已經完成、而且已經付費算出來的部分收下來，不用整份重跑。
+function showInterruptedDialog({ hasPartial, onRetry, onFinalize }) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = "伺服器異常，請稍後再試";
+  box.appendChild(title);
+
+  const desc = document.createElement("p");
+  desc.textContent = hasPartial
+    ? "這次工作在伺服器重啟時被中斷了。你可以再試一次，或直接結束這個階段，"
+      + "保留中斷前已經完成的部分（可以下載）。"
+    : "這次工作在伺服器重啟時被中斷了，而且還沒有任何已完成的部分可以保留。";
+  box.appendChild(desc);
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+
+  const retryBtn = document.createElement("button");
+  retryBtn.type = "button";
+  retryBtn.textContent = "重試";
+  retryBtn.addEventListener("click", () => {
+    overlay.remove();
+    onRetry();
+  });
+  actions.appendChild(retryBtn);
+
+  const finalizeBtn = document.createElement("button");
+  finalizeBtn.type = "button";
+  finalizeBtn.textContent = "結束此階段工作";
+  finalizeBtn.addEventListener("click", () => {
+    overlay.remove();
+    onFinalize();
+  });
+  actions.appendChild(finalizeBtn);
+
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
 function pollJob(jobId) {
   pollTimer = setInterval(async () => {
     // 已經有一次重新登入在等使用者完成，這一輪先跳過，不要每 1.5 秒
@@ -909,6 +962,31 @@ function pollJob(jobId) {
       clearInterval(pollTimer);
       isProcessing = false;
       refreshLockStates();
+    } else if (job.status === "interrupted") {
+      clearInterval(pollTimer);
+      isProcessing = false;
+      refreshLockStates();
+      showInterruptedDialog({
+        hasPartial: job.has_partial,
+        onRetry: () => {
+          isProcessing = true;
+          refreshLockStates();
+          pollJob(jobId);
+        },
+        onFinalize: async () => {
+          try {
+            const r = await authedFetch(`${API_BASE}/api/jobs/${jobId}/finalize`, { method: "POST" });
+            if (!r.ok) throw new Error((await r.json()).error || "結束失敗");
+            currentJobId = jobId;
+            downloadBtn.disabled = false;
+            startReviewBtn.disabled = false;
+            statusText.textContent = "已結束（保留中斷前完成的部分）";
+            showToast("已保留中斷前完成的部分，可以下載了", "success");
+          } catch (e) {
+            showToast(e.message, "error");
+          }
+        },
+      });
     }
   }, 1500);
 }
@@ -1201,6 +1279,31 @@ function pollReview(reviewId) {
       clearInterval(reviewPollTimer);
       isProcessing = false;
       refreshLockStates();
+    } else if (review.status === "interrupted") {
+      clearInterval(reviewPollTimer);
+      isProcessing = false;
+      refreshLockStates();
+      showInterruptedDialog({
+        hasPartial: review.has_partial,
+        onRetry: () => {
+          isProcessing = true;
+          refreshLockStates();
+          pollReview(reviewId);
+        },
+        onFinalize: async () => {
+          try {
+            const r = await authedFetch(`${API_BASE}/api/reviews/${reviewId}/finalize`, { method: "POST" });
+            if (!r.ok) throw new Error((await r.json()).error || "結束失敗");
+            const refreshed = await (await authedFetch(`${API_BASE}/api/reviews/${reviewId}`)).json();
+            renderFindings(refreshed.findings);
+            reviewDownloadBtn.disabled = false;
+            reviewStatusText.textContent = "已結束（保留中斷前完成的部分）";
+            showToast("已保留中斷前完成的建議，可以套用或下載了", "success");
+          } catch (e) {
+            showToast(e.message, "error");
+          }
+        },
+      });
     }
   }, 1500);
 }

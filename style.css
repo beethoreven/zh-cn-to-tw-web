@@ -772,3 +772,42 @@ button:disabled {
 .scroll-hint[hidden] {
   display: none;
 }
+
+/* 工作被伺服器重啟打斷時跳出的對話窗（見 script.js 的
+   showInterruptedDialog）。刻意用自己畫的 modal 而不是原生 confirm()：
+   原生對話窗在桌面版 WKWebView 裡要靠殼實作 WKUIDelegate 才會出現，
+   而且只能有兩個固定按鈕、文案也不能自訂。 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-box {
+  background: var(--card, #fff);
+  color: inherit;
+  border-radius: 10px;
+  padding: 1.5rem;
+  max-width: 420px;
+  width: calc(100% - 3rem);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+
+.modal-box h3 {
+  margin: 0 0 0.75rem;
+}
+
+.modal-box p {
+  margin: 0 0 1.25rem;
+  line-height: 1.6;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
