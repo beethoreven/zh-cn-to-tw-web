@@ -595,33 +595,20 @@ function validateBoundedInput(input, fieldLabel) {
   return null;
 }
 
-// fetch() 規格明確禁止對 file:// 網址發出請求；XMLHttpRequest 雖然沒被
-// 規格禁止，但 WKWebView 一樣擋掉；改用隱藏 <iframe> 走瀏覽器自己的
-// 資源載入管線也不行——實測抓到 frame.contentDocument 是 null，WebKit
-// 把同目錄下不同的 file:// 檔案當成不同 origin，跨 document 存取內容
-//一樣被擋。三條路都走不通，因為問題的本質不是「用哪個 API」，而是
-// 「file:// 底下，JS 在執行期沒有任何辦法讀到『同目錄另一個檔案』的
-// 內容」，不管透過哪一層 API 包裝都一樣。
-//
-// 真正的解法是不要在執行期讀取額外檔案：桌面版打包時（packaging/
-// build_app.sh）直接把 teacher-notice.txt 的內容注入成一個全域變數
-// （見 web/teacher-notice-content.js，跟 script.js 一樣用 <script src>
-// 載入——這條路已經確認在 file:// 底下能正常運作，因為它是「瀏覽器
-// 自己的資源載入管線」，不是 JS 執行期主動發起的請求），這裡直接讀
-// 那個變數，完全不用等任何非同步載入。純瀏覽器版（GitHub Pages）沒有
-// 這個檔案（build_app.sh 只在打包桌面版時才會產生它），變數會是
-// undefined，退回原本單純的 fetch，那邊是 http(s) origin，完全沒有
-// 上述任何限制。
+// 桌面版用 file:// 載入這個頁面，file:// 底下 JS 在執行期沒有任何辦法
+// 讀到「同目錄另一個檔案」的內容（fetch 規格明確禁止對 file:// 發請求；
+// XMLHttpRequest、隱藏 <iframe> 實測也都被 WKWebView 擋下來）。所以不
+// 直接讀本機檔案，改跟其他 API 一樣打 Render 的 /api/teacher-notice
+// （見 zh-cn-to-tw-backend 的 app.py）——那支路由本身不要求登入，內容
+// 直接轉發 GitHub Pages 上的 teacher-notice.txt，維護者只要編輯改動
+// 那份檔案本身、push 即可，這裡跟桌面版打包都不用跟著動。瀏覽器版
+// （GitHub Pages）跟桌面版走同一條路徑，不用再分兩套邏輯。
 async function initTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
-  if (typeof window.__TEACHER_NOTICE_TEXT__ === "string") {
-    teacherNoticeText.textContent = window.__TEACHER_NOTICE_TEXT__ || "（目前沒有內容）";
-    return;
-  }
   try {
-    const res = await fetch("teacher-notice.txt");
-    const text = await res.text();
-    teacherNoticeText.textContent = text || "（目前沒有內容）";
+    const res = await fetch(`${API_BASE}/api/teacher-notice`);
+    const data = await res.json();
+    teacherNoticeText.textContent = data.text || "（目前沒有內容）";
   } catch (e) {
     teacherNoticeText.textContent = "（載入失敗）";
   }

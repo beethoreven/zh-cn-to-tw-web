@@ -380,14 +380,6 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <!-- 這個檔案只在桌面版打包時（packaging/build_app.sh）才會被產生，
-       裡面是 teacher-notice.txt 的內容注入成的 window.__TEACHER_NOTICE_TEXT__
-       全域變數（見 script.js 的 initTeacherNotice() 說明：file:// 底下
-       JS 執行期沒有任何辦法讀到同目錄另一個檔案的內容，只能靠這種
-       「打包時就注入好」的方式繞過去）。GitHub Pages 上沒有這個檔案，
-       404 也無妨——script.js 會偵測不到這個變數，自動退回原本的
-       fetch 動態讀取，那邊是 http(s) origin，沒有這個限制。 -->
-  <script src="teacher-notice-content.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
