@@ -595,33 +595,36 @@ function validateBoundedInput(input, fieldLabel) {
   return null;
 }
 
-// fetch() 規格明確禁止對 file:// 網址發出請求（一律直接丟 TypeError，
-// 連嘗試都不會嘗試——這是規格規定的行為，不是哪個瀏覽器的 bug）。
-// 桌面版 App 現在整個頁面是用 file:// 載入的（見 desktop_app_plan
-// 設計文件關於 localStorage origin 穩定性的說明），原本用 fetch 抓
-// 同目錄 teacher-notice.txt 的做法會直接失敗。**改用 XMLHttpRequest
-// 也一樣不行**（實測抓到：WKWebView 的 allowingReadAccessTo 授權只
-// 涵蓋瀏覽器自己的資源載入管線——例如 <script src>/<link>/<iframe>
-// ——不涵蓋 JS 主動發起的 fetch/XHR 請求，這是刻意的沙盒限制，不是
-// 沒設對參數）。改成用一個隱藏的 <iframe src="teacher-notice.txt">
-// （見 index.html），走跟 script.js/style.css 一樣、已經確認在
-// file:// 底下能正常運作的載入管線，讀取它載入完成後的
-// contentDocument 內容，file:// 跟 http(s) 都能正常運作。
-function initTeacherNotice() {
+// fetch() 規格明確禁止對 file:// 網址發出請求；XMLHttpRequest 雖然沒被
+// 規格禁止，但 WKWebView 一樣擋掉；改用隱藏 <iframe> 走瀏覽器自己的
+// 資源載入管線也不行——實測抓到 frame.contentDocument 是 null，WebKit
+// 把同目錄下不同的 file:// 檔案當成不同 origin，跨 document 存取內容
+//一樣被擋。三條路都走不通，因為問題的本質不是「用哪個 API」，而是
+// 「file:// 底下，JS 在執行期沒有任何辦法讀到『同目錄另一個檔案』的
+// 內容」，不管透過哪一層 API 包裝都一樣。
+//
+// 真正的解法是不要在執行期讀取額外檔案：桌面版打包時（packaging/
+// build_app.sh）直接把 teacher-notice.txt 的內容注入成一個全域變數
+// （見 web/teacher-notice-content.js，跟 script.js 一樣用 <script src>
+// 載入——這條路已經確認在 file:// 底下能正常運作，因為它是「瀏覽器
+// 自己的資源載入管線」，不是 JS 執行期主動發起的請求），這裡直接讀
+// 那個變數，完全不用等任何非同步載入。純瀏覽器版（GitHub Pages）沒有
+// 這個檔案（build_app.sh 只在打包桌面版時才會產生它），變數會是
+// undefined，退回原本單純的 fetch，那邊是 http(s) origin，完全沒有
+// 上述任何限制。
+async function initTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
-  const frame = document.getElementById("teacher-notice-frame");
-  frame.addEventListener("load", () => {
-    try {
-      const text = frame.contentDocument?.body?.textContent ?? "";
-      teacherNoticeText.textContent = text || "（目前沒有內容）";
-    } catch (e) {
-      console.error("[teacher-notice] 讀取 iframe 內容失敗：", e);
-      teacherNoticeText.textContent = "（載入失敗）";
-    }
-  });
-  frame.addEventListener("error", () => {
+  if (typeof window.__TEACHER_NOTICE_TEXT__ === "string") {
+    teacherNoticeText.textContent = window.__TEACHER_NOTICE_TEXT__ || "（目前沒有內容）";
+    return;
+  }
+  try {
+    const res = await fetch("teacher-notice.txt");
+    const text = await res.text();
+    teacherNoticeText.textContent = text || "（目前沒有內容）";
+  } catch (e) {
     teacherNoticeText.textContent = "（載入失敗）";
-  });
+  }
 }
 
 async function loadOptions() {

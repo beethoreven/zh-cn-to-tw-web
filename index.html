@@ -35,14 +35,6 @@
         <section class="notice-box" id="teacher-notice-box">
           <h2>阿舍老師的叮嚀</h2>
           <p id="teacher-notice-text" class="notice-text">載入中…</p>
-          <!-- 桌面版 App 用 file:// 載入整個頁面時，JS 主動發起的
-               fetch()/XMLHttpRequest 對 file:// 都會被 WKWebView 擋掉
-               （allowingReadAccessTo 的授權只涵蓋瀏覽器自己的資源載入
-               管線，例如這個 iframe 或 <script src>/<link>，不涵蓋 JS
-               主動發的請求）。改用這個隱藏 iframe 載入 teacher-notice.txt，
-               走跟 script.js/style.css 一樣的載入管線，file:// 跟
-               http(s) 都能正常運作，見 script.js 的 loadTeacherNotice()。 -->
-          <iframe id="teacher-notice-frame" src="teacher-notice.txt" hidden></iframe>
         </section>
       </div>
 
@@ -388,6 +380,14 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <!-- 這個檔案只在桌面版打包時（packaging/build_app.sh）才會被產生，
+       裡面是 teacher-notice.txt 的內容注入成的 window.__TEACHER_NOTICE_TEXT__
+       全域變數（見 script.js 的 initTeacherNotice() 說明：file:// 底下
+       JS 執行期沒有任何辦法讀到同目錄另一個檔案的內容，只能靠這種
+       「打包時就注入好」的方式繞過去）。GitHub Pages 上沒有這個檔案，
+       404 也無妨——script.js 會偵測不到這個變數，自動退回原本的
+       fetch 動態讀取，那邊是 http(s) origin，沒有這個限制。 -->
+  <script src="teacher-notice-content.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
