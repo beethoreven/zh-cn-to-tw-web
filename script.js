@@ -28,21 +28,51 @@ const API_BASE =
 const DESKTOP_MODE = desktopParams.get("desktop") === "1";
 const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
 
-// 本機 OCR service 的 port 不是固定的，而且會在使用過程中改變：它閒置超過
-// 一段時間會自我關閉釋放記憶體（那支服務吃的記憶體不小），桌面殼的健康
-// 檢查發現它沒了會重新拉起一個，而新的那個會再跟作業系統要一個全新的空
-// port。所以這裡絕對不能在頁面載入當下就把網址上的 ocrPort 算成一個固定
-// 的 base URL——那樣服務一旦重啟過，頁面就會一直打一個已經沒人在聽的舊
-// port，只看到「無法連接伺服器」，而且除非使用者自己想到要按重新整理，
-// 否則永遠好不了（實測撞過：服務在 port 51993 活得好好的，頁面還在打
-// 51655）。改成每次真的要用時才解析：桌面殼在 port 變動時會直接把新值
-// 寫進 window.__OCR_PORT__（見 zh-cn-to-tw-mac 的 WebView.swift，用
-// evaluateJavaScript 推進來，刻意不重新載入頁面，才不會把使用者做到一半
-// 的工作狀態清掉），這裡優先讀那個值，沒有才退回頁面載入當下網址帶的。
+// 本機 OCR service 是「用到才開、用完就關」的：它只在 Stage 1 的 OCR 那一步
+// 派得上用場，其他時候（潤飾、Stage 2 校對、下載、登入）完全沒事做，而且
+// PaddleOCR 跑完一份大檔案之後記憶體佔用不會完全還回去，關掉重開才真的收得
+// 回來。所以它平常根本沒在跑，port 也就不是一個固定值——網址上刻意不帶
+// ocrPort，改由桌面殼在服務起來/關掉時，用 evaluateJavaScript 直接把最新的值
+// 寫進 window.__OCR_PORT__（見 zh-cn-to-tw-mac 的 WebView.swift）。刻意不走
+// 「改網址再重新載入」那條路，那樣會把使用者做到一半的工作狀態清掉。
 function desktopOcrBase() {
   if (!DESKTOP_MODE) return null;
-  const port = window.__OCR_PORT__ || desktopParams.get("ocrPort");
+  const port = window.__OCR_PORT__;
   return port ? `http://127.0.0.1:${port}` : null;
+}
+
+// 請桌面殼把本機 OCR 服務拉起來，並等到它真的可以服務了才回傳 base URL。
+// 一定要等：殼啟動 process、process 綁好 port、port 再被推回這個頁面，
+// 整串是非同步的，post 完馬上就送 PDF 過去一定會撞上「無法連接伺服器」。
+// 這裡等的是 /health 真的回應，不是只等 port 出現——port 是 process 一綁好
+// 就印出來的，那時候 Flask 不見得已經開始接受連線。
+async function ensureDesktopOcrReady(timeoutMs = 30000) {
+  if (!DESKTOP_MODE) return null;
+  window.webkit.messageHandlers.ocrService.postMessage({ action: "start" });
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const base = desktopOcrBase();
+    if (base) {
+      try {
+        const res = await fetch(`${base}/health`, {
+          headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+        });
+        if (res.ok) return base;
+      } catch (e) {
+        // 還沒開始接受連線，下一輪再試
+      }
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error("本機 OCR 服務啟動逾時，請按左上角的重新整理再試一次");
+}
+
+// OCR 階段結束（結果已經拿到手、也送去 Render 了）就把服務關掉釋放記憶體。
+// 失敗的情況也要關——沒關的話那份記憶體會一直佔著直到 App 關閉。
+function releaseDesktopOcr() {
+  if (!DESKTOP_MODE) return;
+  window.webkit.messageHandlers.ocrService.postMessage({ action: "stop" });
 }
 
 // Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
@@ -787,25 +817,38 @@ submitBtn.addEventListener("click", async () => {
 
   try {
     let jobId;
-    const ocrBase = desktopOcrBase();
-    if (ocrBase) {
-      statusText.textContent = "本機 OCR 辨識中";
-      const ocrFormData = new FormData();
-      ocrFormData.append("file", file);
-      ocrFormData.append("dpi", dpiInput.value);
-      ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+    if (DESKTOP_MODE) {
+      statusText.textContent = "啟動本機 OCR 服務";
+      // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用（見
+      // ensureDesktopOcrReady 的說明）。不管後面成功還是失敗，finally
+      // 都會把它關掉，記憶體不會一直佔著。
+      let pages;
+      try {
+        const ocrBase = await ensureDesktopOcrReady();
 
-      const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
-        method: "POST",
-        headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
-        body: ocrFormData,
-      });
-      if (!startRes.ok) {
-        const err = await startRes.json();
-        throw new Error(err.error || "本機 OCR 辨識失敗");
+        statusText.textContent = "本機 OCR 辨識中";
+        const ocrFormData = new FormData();
+        ocrFormData.append("file", file);
+        ocrFormData.append("dpi", dpiInput.value);
+        ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+
+        const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
+          method: "POST",
+          headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+          body: ocrFormData,
+        });
+        if (!startRes.ok) {
+          const err = await startRes.json();
+          throw new Error(err.error || "本機 OCR 辨識失敗");
+        }
+        const { job_id: ocrJobId } = await startRes.json();
+        ({ pages } = await pollLocalOcrJob(ocrJobId));
+      } finally {
+        // OCR 這一步已經結束（成功或失敗都一樣），結果也已經在 pages 這個
+        // 變數裡了，服務沒有存在的必要，關掉把記憶體還回去。後面把文字送去
+        // Render 潤飾那段完全不需要它。
+        releaseDesktopOcr();
       }
-      const { job_id: ocrJobId } = await startRes.json();
-      const { pages } = await pollLocalOcrJob(ocrJobId);
 
       statusText.textContent = "上傳中";
       const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
