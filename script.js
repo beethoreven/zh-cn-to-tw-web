@@ -595,13 +595,39 @@ function validateBoundedInput(input, fieldLabel) {
   return null;
 }
 
+// fetch() 規格明確禁止對 file:// 網址發出請求（一律直接丟 TypeError，
+// 連嘗試都不會嘗試——這是規格規定的行為，不是哪個瀏覽器的 bug）。
+// 桌面版 App 現在整個頁面是用 file:// 載入的（見 desktop_app_plan
+// 設計文件關於 localStorage origin 穩定性的說明），下面這個抓同目錄
+// teacher-notice.txt 的動作如果繼續用 fetch，會直接失敗。改用
+// XMLHttpRequest——這是比較舊的 API，WebKit 沒有跟著 fetch 的規格
+// 一起擋掉 file:// scheme，file:// 頁面下抓同目錄檔案可以正常運作；
+// 純瀏覽器版（http(s) origin）用同一支函式一樣正常，不需要另外判斷
+// 現在是不是桌面版。
+function loadLocalTextFile(path) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", path, true);
+    xhr.onload = () => {
+      // file:// 底下成功的請求，status 是 0（file:// 沒有真正的 HTTP
+      // 狀態碼可言），http(s) 底下才會是 200，兩種都要接受。
+      if (xhr.status === 200 || xhr.status === 0) {
+        resolve(xhr.responseText);
+      } else {
+        reject(new Error(`HTTP ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("XHR 讀取失敗"));
+    xhr.send();
+  });
+}
+
 // 純靜態內容，跟網頁本身放在一起、不用登入也看得到，所以不透過後端
-// API（不用 authedFetch、不用等登入），直接抓同源的純文字檔案
+// API（不用 authedFetch、不用等登入），直接抓同目錄的純文字檔案
 async function loadTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
   try {
-    const res = await fetch("teacher-notice.txt");
-    const text = await res.text();
+    const text = await loadLocalTextFile("teacher-notice.txt");
     teacherNoticeText.textContent = text || "（目前沒有內容）";
   } catch (e) {
     teacherNoticeText.textContent = "（載入失敗）";
