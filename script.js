@@ -26,10 +26,24 @@ const API_BASE =
 // PDF 直接丟給 Render（Render 免費方案扛不住 PaddleOCR，見 desktop_app_plan
 // 設計文件）。純瀏覽器開啟（網址沒有這些參數）行為完全不受影響。
 const DESKTOP_MODE = desktopParams.get("desktop") === "1";
-const DESKTOP_OCR_PORT = desktopParams.get("ocrPort");
 const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
-const DESKTOP_OCR_BASE =
-  DESKTOP_MODE && DESKTOP_OCR_PORT ? `http://127.0.0.1:${DESKTOP_OCR_PORT}` : null;
+
+// 本機 OCR service 的 port 不是固定的，而且會在使用過程中改變：它閒置超過
+// 一段時間會自我關閉釋放記憶體（那支服務吃的記憶體不小），桌面殼的健康
+// 檢查發現它沒了會重新拉起一個，而新的那個會再跟作業系統要一個全新的空
+// port。所以這裡絕對不能在頁面載入當下就把網址上的 ocrPort 算成一個固定
+// 的 base URL——那樣服務一旦重啟過，頁面就會一直打一個已經沒人在聽的舊
+// port，只看到「無法連接伺服器」，而且除非使用者自己想到要按重新整理，
+// 否則永遠好不了（實測撞過：服務在 port 51993 活得好好的，頁面還在打
+// 51655）。改成每次真的要用時才解析：桌面殼在 port 變動時會直接把新值
+// 寫進 window.__OCR_PORT__（見 zh-cn-to-tw-mac 的 WebView.swift，用
+// evaluateJavaScript 推進來，刻意不重新載入頁面，才不會把使用者做到一半
+// 的工作狀態清掉），這裡優先讀那個值，沒有才退回頁面載入當下網址帶的。
+function desktopOcrBase() {
+  if (!DESKTOP_MODE) return null;
+  const port = window.__OCR_PORT__ || desktopParams.get("ocrPort");
+  return port ? `http://127.0.0.1:${port}` : null;
+}
 
 // Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
 // 無法保證真的每 10 分鐘執行(GitHub 自己的 schedule 觸發時間常常延遲數小時),
@@ -773,14 +787,15 @@ submitBtn.addEventListener("click", async () => {
 
   try {
     let jobId;
-    if (DESKTOP_OCR_BASE) {
+    const ocrBase = desktopOcrBase();
+    if (ocrBase) {
       statusText.textContent = "本機 OCR 辨識中";
       const ocrFormData = new FormData();
       ocrFormData.append("file", file);
       ocrFormData.append("dpi", dpiInput.value);
       ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
 
-      const startRes = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf/start`, {
+      const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
         method: "POST",
         headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
         body: ocrFormData,
@@ -844,7 +859,9 @@ function pollLocalOcrJob(jobId) {
     const timer = setInterval(async () => {
       let res, job;
       try {
-        res = await fetch(`${DESKTOP_OCR_BASE}/ocr/pdf/status/${jobId}`, {
+        // 每一輪都重新解析 base（而不是沿用開始時算好的）——服務中途重啟
+        // 換 port 的話，下一輪就會自動打到新的那個上去。
+        res = await fetch(`${desktopOcrBase()}/ocr/pdf/status/${jobId}`, {
           headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
         });
         job = await res.json();
