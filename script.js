@@ -600,9 +600,10 @@ function validateBoundedInput(input, fieldLabel) {
 // XMLHttpRequest、隱藏 <iframe> 實測也都被 WKWebView 擋下來）。所以不
 // 直接讀本機檔案，改跟其他 API 一樣打 Render 的 /api/teacher-notice
 // （見 zh-cn-to-tw-backend 的 app.py）——那支路由本身不要求登入，內容
-// 直接轉發 GitHub Pages 上的 teacher-notice.txt，維護者只要編輯改動
-// 那份檔案本身、push 即可，這裡跟桌面版打包都不用跟著動。瀏覽器版
-// （GitHub Pages）跟桌面版走同一條路徑，不用再分兩套邏輯。
+// 來源是 zh-cn-to-tw-backend repo 根目錄的 ta-notice.txt，維護者只要
+// 編輯改動那份檔案、commit、push、部署即可，這裡跟桌面版打包都不用
+// 跟著動。瀏覽器版（GitHub Pages）跟桌面版走同一條路徑，不用再分兩
+// 套邏輯。
 async function initTeacherNotice() {
   const teacherNoticeText = document.getElementById("teacher-notice-text");
   try {
