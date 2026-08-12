@@ -360,6 +360,14 @@ body {
      top 從 229 一路變成 -671，完全沒有黏住）。把這一欄限制在不超過
      一個視窗的高度，它才會比容器矮、才有空間可以黏。 */
   max-height: calc(100vh - 90px - 1.5rem);
+  /* WebKit（Safari/WKWebView）對 position: sticky 有個已知問題：如果這個
+     元素沒有被獨立提升成合成圖層（compositing layer），用滑鼠滾輪／
+     觸控板的慣性捲動（momentum scroll）時，sticky 常常追不上捲動、
+     看起來完全沒黏住——但用程式瞬間跳轉捲動位置（scrollTo）測試時
+     完全正常（實測過：兩者行為不一致，只有真實手勢捲動會出問題，這正是
+     這個 bug 難查的原因，自動化測試量不到）。will-change 明確告訴瀏覽器
+     這個元素會變動位置，強制提升成自己的圖層，繞開這個問題。 */
+  will-change: transform;
 }
 
 .sidebar-column .notice-box {

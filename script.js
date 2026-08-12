@@ -938,13 +938,14 @@ function pollLocalOcrJob(jobId) {
         return;
       }
 
-      // 依實際階段顯示。模型載入單獨就要 25 秒左右（而且服務是用到才開的，
-      // 每次上傳都會重來一次），如果這段時間一路顯示「辨識中（第 0/N 頁）」，
-      // 使用者會以為當掉了——明確講出來在等什麼，順便標示只有第一次要等。
+      // 依實際階段顯示。模型載入單獨要花一段時間（實測不同機器差異大，
+      // 從 5 秒到 25 秒都有；而且服務是用到才開的，每次上傳都會重來一次），
+      // 如果這段時間一路顯示「辨識中（第 0/N 頁）」，使用者會以為當掉
+      // 了——明確講出來在等什麼，不寫死秒數，順便標示只有第一次要等。
       if (job.phase === "preparing") {
         statusText.textContent = "本機 OCR 準備中（讀取 PDF）";
       } else if (job.phase === "loading_model") {
-        statusText.textContent = "載入辨識模型中（約需 25 秒，每次辨識前一次）";
+        statusText.textContent = "載入辨識模型中（每次辨識前一次，時間依電腦效能而定）";
       } else {
         statusText.textContent = job.total_pages
           ? `本機 OCR 辨識中（第 ${job.current_page}/${job.total_pages} 頁）`
