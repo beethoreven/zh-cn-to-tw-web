@@ -345,39 +345,16 @@ body {
   flex: 0 1 260px;
   min-width: 220px;
   display: flex;
-  /* 「固定住」：右欄內容變長時，這裡不但不再被撐高（見上面
-     align-items 的說明），還要在使用者往下捲動時留在畫面上，不要
-     捲一捲就整個消失在畫面外——比起單純「不長高」更符合「阿舍老師的
-     叮嚀」這種提示性內容應該要一直看得到的用途。90px 大概對應
-     .top-bar 的高度加一點呼吸空間，避免緊貼著視窗頂端。 */
-  position: sticky;
-  top: 90px;
-  /* 這行是讓上面的 sticky 真正有效的關鍵，不是單純的視覺限制。
-     sticky 元素只能在「自己的容器還剩多少空間」的範圍內滑動：叮嚀文字
-     一長，這一欄就變成 .page-layout 裡最高的一欄，容器高度於是等於它
-     自己的高度，可滑動空間歸零，sticky 就完全失效、退化成跟著捲走
-     （實測：文字載入後這一欄 3550px、容器也是 3550px，往下捲時
-     top 從 229 一路變成 -671，完全沒有黏住）。把這一欄限制在不超過
-     一個視窗的高度，它才會比容器矮、才有空間可以黏。 */
-  max-height: calc(100vh - 90px - 1.5rem);
-  /* WebKit（Safari/WKWebView）對 position: sticky 有個已知問題：如果這個
-     元素沒有被獨立提升成合成圖層（compositing layer），用滑鼠滾輪／
-     觸控板的慣性捲動（momentum scroll）時，sticky 常常追不上捲動、
-     看起來完全沒黏住——但用程式瞬間跳轉捲動位置（scrollTo）測試時
-     完全正常（實測過：兩者行為不一致，只有真實手勢捲動會出問題，這正是
-     這個 bug 難查的原因，自動化測試量不到）。will-change 明確告訴瀏覽器
-     這個元素會變動位置，強制提升成自己的圖層，繞開這個問題。 */
-  will-change: transform;
+  /* 刻意不用 position: sticky——這裡的「固定」指的是跟「今日使用量」
+     一樣，位置固定在文件內容裡、隨頁面正常捲走，不是黏在畫面上不動。
+     之前誤解成後者，做了一輪 sticky + max-height + will-change 的嘗試，
+     使用者捲動時看到它停在螢幕上不動、內容被捲出視野，這其實正是要
+     修的問題（他們稱為「懸浮」），不是預期效果，已經全部拿掉。 */
 }
 
 .sidebar-column .notice-box {
   flex: 1 1 auto;
   margin-bottom: 0;
-  /* flex 子項目的 min-height 預設是 auto（不會縮到比內容小），不覆寫成 0
-     的話下面的 overflow-y 不會生效，文字還是會把框撐破。 */
-  min-height: 0;
-  /* 文字超過上面限制的高度時，在這個框裡自己捲，不要把整欄撐高。 */
-  overflow-y: auto;
 }
 
 .main-column {
@@ -406,14 +383,6 @@ body {
   .sidebar-column {
     flex: initial;
     min-width: 0;
-    /* 窄螢幕改成上下疊放（見上面 .page-layout 的 flex-direction:
-       column），這時候「黏在畫面上」的 sticky 定位沒有意義，還會讓
-       這個區塊卡在畫面中間某處不動，反而擋住下面的內容，取消掉。 */
-    position: static;
-    /* 上面那個 max-height 只是為了讓 sticky 有作用才加的，這裡既然不
-       sticky 了就要一併解除，不然在窄螢幕會平白把叮嚀壓成一個要自己
-       捲的小框（上下疊放時它本來就可以想多高就多高）。 */
-    max-height: none;
   }
 
   .columns {
