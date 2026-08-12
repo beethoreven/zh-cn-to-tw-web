@@ -4,7 +4,7 @@
 
 劇本殺劇本簡繁轉換工具的前端，目前唯一目標是被 `zh-cn-to-tw-mac` 桌面版 App 內嵌使用。搭配後端 API：[`zh-cn-to-tw-backend`](https://github.com/beethoreven/zh-cn-to-tw-backend)。這份文件分成兩部分：
 
-- **[專案報告](#專案報告)**：為什麼 repo 根目錄跟實際網頁內容分開放、桌面版本機 OCR 的關鍵決策是什麼。
+- **[專案報告](#專案報告)**：為什麼這個 repo 的內容不會出現在 GitHub Pages 上、桌面版本機 OCR 的關鍵決策是什麼。
 - **[架設 SOP](#架設-sop)**：本機怎麼跑起來測試。
 
 ---
@@ -13,41 +13,49 @@
 
 ### 這是什麼
 
-Vanilla JavaScript（無框架、無建置流程），核心程式碼在 `app/` 子資料夾（`index.html`/`script.js`/`style.css`/`favicon.png`），被 `zh-cn-to-tw-mac` 用 `file://` 內嵌載入，是桌面版 App 畫面唯一的來源。
+Vanilla JavaScript（無框架、無建置流程），單一份 `index.html`/`script.js`/`style.css`/`favicon.png`，被 `zh-cn-to-tw-mac` 用 `file://` 內嵌載入，是桌面版 App 畫面唯一的來源。
 
 判斷現在是不是桌面殼載入的，靠網址的查詢參數：桌面殼載入頁面時會帶
 `?desktop=1&ocrToken=<隨機值>&apiBase=<Render網址>`，`script.js` 一開始
 就讀這些參數決定要不要走本機 OCR 這條路——PDF 先送本機的
 `zh-cn-to-tw-ocr-service` 做 OCR，OCR 完的文字才送 Render 後端
 （`zh-cn-to-tw-backend`）做簡轉繁/潤飾。沒有這些參數時會回退成直接把
-PDF 送給 Render 後端自己做 OCR 的舊路徑（下一節說明這條路徑現在為什麼
-刻意不再從任何公開頁面連結出去）。
+PDF 送給 Render 後端自己做 OCR 的舊路徑，這條路徑現在只有本機開發時
+（用靜態伺服器手動開起來，見下方 SOP）才碰得到——見下一節說明為什麼
+這整份內容不再出現在任何公開網址上。
 
-### 為什麼 repo 根目錄跟 `app/` 分開放
+### 為什麼這個 repo 的內容不會出現在 GitHub Pages 上
 
-這個 repo 以前同時扮演兩個角色：GitHub Pages 從 repo 根目錄部署出去的
-公開網址(`https://beethoreven.github.io/zh-cn-to-tw-web/`)，跟被
+這個 repo 以前只有一個分支（`main`），同時扮演兩個角色：GitHub Pages
+從這個分支的根目錄部署出去的公開網址
+（`https://beethoreven.github.io/zh-cn-to-tw-web/`），跟被
 `zh-cn-to-tw-mac` 內嵌打包進桌面版 App 的網頁來源，是同一份檔案。
 
 桌面版才是這個工具現在唯一要主推的使用方式——單純瀏覽器打開網址、
 PDF 直接上傳給 Render 做 OCR 的那條路，繼承了 Render 免費方案扛不住
 PaddleOCR 的資源風險（見 `zh-cn-to-tw-backend` README「為什麼 OCR
-搬到使用者本機」），不該再是任何人第一個接觸到的入口。因此把兩個角色
-拆開：
+搬到使用者本機」），不該再是任何人能透過網址碰到的東西。
 
-- 實際網頁內容搬進 `app/` 子資料夾，`zh-cn-to-tw-mac` 打包時改讀這裡
-  （見該 repo README 的說明）。
-- repo 根目錄（GitHub Pages 實際部署的東西）換成一個只有「網站建構中」
-  的極簡佔位頁。這個 repo 名稱、GitHub Pages 這個網址都保留不變；
-  未來規劃是把根目錄換成「下載/更新桌面版 App」的頁面，但這一步還
-  沒做，目前只有佔位文字。
+**曾經考慮過、後來放棄的方案**：把 GitHub Pages 服務的根目錄換成佔位頁，
+真正的網頁內容搬進同一個分支底下的 `app/` 子資料夾。這個方案的問題是
+GitHub Pages 只要對某個分支開著，那個分支底下所有檔案都還是能被直接
+打開（`.../app/`）——只是沒有從根目錄連結出去，並沒有真正解決「這個
+網址打得到」的問題，只是藏起來，跟這個專案自己在別處記錄過的「延後
+問題、沒有根治」是同一種模式。
 
-**`app/` 底下的內容技術上仍然可以被瀏覽器直接打開**
-（`https://beethoreven.github.io/zh-cn-to-tw-web/app/`，CORS 也沒有特別
-擋這個 origin 下的任何路徑），並沒有被真的關掉——只是不再從根目錄連結
-出去，一般使用者不會意外走到這條路。也就是說 `zh-cn-to-tw-backend`
-「瀏覽器版 OCR 路徑仍然存在、仍然扛著 Render 資源風險」這個技術現況
-本身沒有改變，改變的只是「這條路不再是網址打開後看到的預設畫面」。
+最後採用的方案：`main` 分支的內容維持原本結構（`zh-cn-to-tw-mac` 打包
+時照樣從這裡複製檔案），但另外開一個完全獨立的 `update-page` 分支，
+內容只有一個「網站建構中」的極簡佔位頁，跟 `main` 沒有共同的檔案；
+GitHub repo 的 Pages 設定從「服務 `main` 分支的根目錄」改成「服務
+`update-page` 分支的根目錄」。這樣一來，`main` 分支上的真實內容從
+結構上就完全不在 Pages 的服務範圍內——不是「沒連結」，是「根本不存在
+於被服務的那份檔案裡」，`https://beethoreven.github.io/zh-cn-to-tw-web/`
+這個網址完全不變，未來規劃是把 `update-page` 分支的內容換成「下載/
+更新桌面版 App」的頁面，但這一步還沒做，目前只有佔位文字。
+
+`zh-cn-to-tw-mac` 打包時是直接從這個 repo 本機 clone 的工作目錄複製
+`main` 分支的檔案，完全不透過 HTTP、跟 GitHub Pages 服務哪個分支無關，
+所以這個切分不影響桌面版打包。
 
 ### 為什麼桌面版的本機 OCR 服務是「用到才開、用完就關」
 
@@ -105,21 +113,19 @@ momentum scroll 是否會讓 sticky 追不上捲動這種細節排查）。後�
 `known-issue-check` skill：驗證使用者互動類的 bug，一定要用「使用者
 真正描述的最終畫面」反覆對照，不能只驗證「有沒有做出某個技術效果」。
 
-### 檔案結構
+### 檔案結構（`main` 分支）
 
 ```
-app/
-  ├── index.html    唯一的頁面骨架
-  ├── script.js     全部邏輯（登入、Stage 1/2、輪詢、管理員介面、桌面版判斷）
-  ├── style.css     樣式
-  └── favicon.png
-index.html          repo 根目錄的佔位頁，GitHub Pages 實際部署的就是這個
+index.html    唯一的頁面骨架
+script.js     全部邏輯（登入、Stage 1/2、輪詢、管理員介面、桌面版判斷）
+style.css     樣式
+favicon.png
 ```
 
-無建置流程。`app/` 底下這四個檔案直接被 `zh-cn-to-tw-mac` 的打包腳本
-複製進 `.app` bundle；根目錄的 `index.html` 是 GitHub Pages 從 repo
-根目錄部署出去的東西，兩者刻意是不同內容（見上方「為什麼 repo 根目錄
-跟 `app/` 分開放」）。
+無建置流程，這四個檔案直接被 `zh-cn-to-tw-mac` 的打包腳本複製進
+`.app` bundle。GitHub Pages **不會**部署這個分支——它服務的是另一個
+獨立的 `update-page` 分支，見上方「為什麼這個 repo 的內容不會出現在
+GitHub Pages 上」。
 
 ---
 
@@ -129,11 +135,10 @@ index.html          repo 根目錄的佔位頁，GitHub Pages 實際部署的就
 
 `file://` 直接打開會被後端 CORS 擋掉（後端只放行
 `https://beethoreven.github.io` 跟任意 port 的 `localhost`/`127.0.0.1`），
-務必用靜態伺服器方式開，而且要從 `app/` 這一層開起（不是 repo 根目錄，
-根目錄現在是佔位頁）：
+務必用靜態伺服器方式開：
 
 ```bash
-cd zh-cn-to-tw-web/app
+cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
@@ -153,14 +158,28 @@ http://localhost:8000/?desktop=1&ocrToken=test&apiBase=http://localhost:5001
 本機 OCR 相關功能實際上叫不動——這個模式主要是拿來看 UI 判斷邏輯對不
 對，真正端到端測試桌面路徑要透過 `zh-cn-to-tw-mac` 重新打包整個 App。
 
-## 部署（GitHub Pages）
+## 部署
 
-Push 到 `main` 就會自動部署，但**部署出去的是 repo 根目錄那個「網站
-建構中」佔位頁**，不是 `app/` 底下的實際工具——GitHub Pages 設定成從
-repo 根目錄部署，根目錄現在故意只放佔位頁（見上方「為什麼 repo 根目錄
-跟 `app/` 分開放」）。`app/` 底下的內容不需要另外部署：
-`zh-cn-to-tw-mac` 打包 App 時直接從這個 repo 的工作目錄複製檔案進去
-（見 `zh-cn-to-tw-mac` README），跟 GitHub Pages 有沒有部署無關。
+**`main` 分支不需要、也不會被部署。** Push 到 `main` 只影響
+`zh-cn-to-tw-mac` 下次打包時複製到的內容，跟 GitHub Pages 完全無關。
+
+## 更新 GitHub Pages 上的佔位頁（`update-page` 分支）
+
+GitHub Pages 設定成服務 `update-page` 分支的根目錄（Settings → Pages
+→ Source），這個分支跟 `main` 沒有共同的檔案、也沒有共同的 git
+歷史（獨立的 orphan 分支），內容只有一個極簡佔位頁：
+
+```bash
+git checkout update-page
+# 編輯 index.html
+git add index.html
+git commit -m "..."
+git push origin update-page
+git checkout main
+```
+
+不要在這個分支上動 `main` 的程式碼，也不要把這個分支合併回 `main`
+（兩者刻意保持沒有共同歷史）。
 
 ---
 
@@ -170,29 +189,29 @@ repo 根目錄部署，根目錄現在故意只放佔位頁（見上方「為什
 
 The frontend for a Simplified-to-Traditional Chinese script conversion tool. Its only remaining purpose is to be embedded inside the `zh-cn-to-tw-mac` desktop app. Pairs with the backend API: [`zh-cn-to-tw-backend`](https://github.com/beethoreven/zh-cn-to-tw-backend). This document is split into two parts:
 
-- **[Project Report](#project-report)**: why the repo root and the actual web content now live apart, and the key decisions behind desktop local OCR.
+- **[Project Report](#project-report)**: why this repo's content never appears on GitHub Pages, and the key decisions behind desktop local OCR.
 - **[Setup Guide](#setup-guide)**: how to run it locally.
 
 ## Project Report
 
 ### What This Is
 
-Vanilla JavaScript (no framework, no build step) — the actual code lives in the `app/` subfolder (`index.html`/`script.js`/`style.css`/`favicon.png`), loaded by `zh-cn-to-tw-mac` via `file://`. It's the sole source of the desktop app's screen.
+Vanilla JavaScript (no framework, no build step) — a single `index.html`/`script.js`/`style.css`/`favicon.png`, loaded by `zh-cn-to-tw-mac` via `file://`. It's the sole source of the desktop app's screen.
 
 Whether the page was loaded by the desktop shell is determined from URL query parameters: the shell loads the page with
-`?desktop=1&ocrToken=<random>&apiBase=<Render URL>`, and `script.js` reads these at startup to decide whether to take the local-OCR path — the PDF is first sent to the local `zh-cn-to-tw-ocr-service` for OCR, and only the resulting text goes to the Render backend (`zh-cn-to-tw-backend`) for conversion/polish. Without those parameters, it falls back to the older path of uploading the PDF straight to the Render backend, which does the OCR itself (see the next section for why this path is now deliberately unlinked from any public page).
+`?desktop=1&ocrToken=<random>&apiBase=<Render URL>`, and `script.js` reads these at startup to decide whether to take the local-OCR path — the PDF is first sent to the local `zh-cn-to-tw-ocr-service` for OCR, and only the resulting text goes to the Render backend (`zh-cn-to-tw-backend`) for conversion/polish. Without those parameters, it falls back to the older path of uploading the PDF straight to the Render backend, which does the OCR itself — this path is now only reachable during local development (running it via a static server manually, see the Setup Guide below). See the next section for why this whole thing no longer shows up on any public URL.
 
-### Why the Repo Root and `app/` Live Apart
+### Why This Repo's Content Never Appears on GitHub Pages
 
-This repo used to play two roles at once: the public URL GitHub Pages deploys from the repo root (`https://beethoreven.github.io/zh-cn-to-tw-web/`), and the web source embedded by `zh-cn-to-tw-mac` into the packaged desktop app — the exact same files served both roles.
+This repo used to have a single branch (`main`) that played two roles at once: the public URL GitHub Pages deploys from that branch's root (`https://beethoreven.github.io/zh-cn-to-tw-web/`), and the web source embedded by `zh-cn-to-tw-mac` into the packaged desktop app — the exact same files served both roles.
 
-The desktop app is now the only use path this tool is meant to promote — a plain browser hitting the URL and uploading a PDF straight to Render for OCR inherits Render's free-tier inability to reliably run PaddleOCR (see `zh-cn-to-tw-backend`'s README, "Why OCR Moved to the User's Own Machine"), and shouldn't be the first thing anyone lands on anymore. So the two roles were split apart:
+The desktop app is now the only use path this tool is meant to promote — a plain browser hitting the URL and uploading a PDF straight to Render for OCR inherits Render's free-tier inability to reliably run PaddleOCR (see `zh-cn-to-tw-backend`'s README, "Why OCR Moved to the User's Own Machine"), and shouldn't be something anyone can reach via a URL anymore.
 
-- The actual web content moved into the `app/` subfolder; `zh-cn-to-tw-mac`'s packaging script now reads from there instead (see that repo's README).
-- The repo root — what GitHub Pages actually deploys — became a minimal placeholder that says only "網站建構中" (site under construction). The repo's name and the GitHub Pages URL both stay the same; the plan is eventually to turn the root into a "download/update the desktop app" page, but that step hasn't happened yet — for now it's just placeholder text.
+**Tried and abandoned**: switching what GitHub Pages deploys from the repo root to a placeholder, while moving the real web content into an `app/` subfolder under the same branch. The problem: as long as GitHub Pages is enabled for a branch, every file under that branch is still reachable directly (`.../app/`) — nothing was actually unlinked from the root, but the URL itself still worked, just hidden. That's the same "defer the problem, don't fix it" pattern this project has documented elsewhere.
 
-**Content under `app/` is technically still reachable directly in a browser**
-(`https://beethoreven.github.io/zh-cn-to-tw-web/app/` — CORS doesn't specifically block any path under that origin), and it hasn't actually been disabled — it's simply no longer linked from the root, so an ordinary user won't stumble onto it. In other words, the underlying technical fact that `zh-cn-to-tw-backend`'s browser-mode OCR path still exists and still carries Render's resource risk hasn't changed at all — what changed is only that this path is no longer the default screen you land on after opening the URL.
+What shipped instead: `main` keeps its original flat structure (`zh-cn-to-tw-mac`'s packaging script still copies from here as before), but a completely separate `update-page` branch was created, holding only a minimal "網站建構中" (site under construction) placeholder — no files in common with `main` at all. The repo's Pages setting was switched from "serve `main`'s root" to "serve `update-page`'s root." That means the real content on `main` is structurally outside anything Pages ever serves — not "unlinked," but "not present in the served tree at all." The URL `https://beethoreven.github.io/zh-cn-to-tw-web/` itself is unchanged; the plan is eventually to replace `update-page`'s content with a "download/update the desktop app" page, but that hasn't happened yet — for now it's just placeholder text.
+
+`zh-cn-to-tw-mac` builds by copying files from `main`'s local working tree directly — no HTTP involved, and independent of which branch GitHub Pages happens to be serving — so this split doesn't affect desktop packaging at all.
 
 ### Why the Desktop OCR Service Is "Start on Use, Stop When Done"
 
@@ -224,18 +243,20 @@ The plain-text tip panel on the left originally lived in this repo, read via `fe
 
 For a stretch, this notice panel was built with `position: sticky` (stays pinned on screen while scrolling, visible even after the surrounding content scrolls away) — a fair amount of back-and-forth went into verifying this correctly (down to whether WebKit's momentum scrolling could make sticky lag behind, a genuinely subtle rendering detail). It later turned out the user wanted the *opposite* behavior — pinned to its position in the document, like "今日使用量," scrolling away normally with the page. Both sides had been using the word "固定" (fixed) to mean opposite things the entire time: one meaning "pinned to the screen," the other "anchored to its spot in the document, and therefore scrolled out of view." Sticky was removed entirely; the panel is now a plain flex item again. This is now recorded in the `known-issue-check` skill: verifying an interaction bug has to be checked against the user's own literal description of the end state, repeatedly, not just against whether some named technical effect was correctly implemented.
 
-### File Layout
+### File Layout (`main` branch)
 
 ```
-app/
-  ├── index.html    the one page skeleton
-  ├── script.js     all logic (login, Stage 1/2, polling, admin UI, desktop-mode detection)
-  ├── style.css     styles
-  └── favicon.png
-index.html          the repo-root placeholder — what GitHub Pages actually deploys
+index.html    the one page skeleton
+script.js     all logic (login, Stage 1/2, polling, admin UI, desktop-mode detection)
+style.css     styles
+favicon.png
 ```
 
-No build step. The four files under `app/` are copied directly into the `.app` bundle by `zh-cn-to-tw-mac`'s packaging script; the root `index.html` is what GitHub Pages deploys from the repo root — the two are deliberately different content (see "Why the Repo Root and `app/` Live Apart" above).
+No build step — these four files are copied directly into the `.app`
+bundle by `zh-cn-to-tw-mac`'s packaging script. GitHub Pages does
+**not** deploy this branch — it serves a separate `update-page` branch
+instead; see "Why This Repo's Content Never Appears on GitHub Pages"
+above.
 
 ---
 
@@ -245,11 +266,10 @@ No build step. The four files under `app/` are copied directly into the `.app` b
 
 Opening via `file://` gets blocked by the backend's CORS (it only
 allows `https://beethoreven.github.io` and any-port
-`localhost`/`127.0.0.1`), so always use a static server, and serve it
-from `app/` (not the repo root, which is now the placeholder):
+`localhost`/`127.0.0.1`), so always use a static server:
 
 ```bash
-cd zh-cn-to-tw-web/app
+cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
@@ -272,14 +292,27 @@ mode is mainly useful for checking the UI's branching logic. True
 end-to-end testing of the desktop path requires rebuilding the whole
 app via `zh-cn-to-tw-mac`.
 
-## Deployment (GitHub Pages)
+## Deployment
 
-Pushing to `main` auto-deploys, but **what gets deployed is the repo-root
-placeholder** ("網站建構中"), not the real tool under `app/` — GitHub
-Pages is configured to deploy from the repo root, and the root
-deliberately holds only the placeholder (see "Why the Repo Root and
-`app/` Live Apart" above). Content under `app/` needs no separate
-deployment step: `zh-cn-to-tw-mac`'s packaging script copies files
-straight from this repo's working tree when building the app (see
-`zh-cn-to-tw-mac`'s README) — independent of whether GitHub Pages has
-deployed anything.
+**The `main` branch needs no deployment and never gets one.** Pushing
+to `main` only affects what `zh-cn-to-tw-mac` copies in on its next
+build — it has nothing to do with GitHub Pages.
+
+## Updating the GitHub Pages Placeholder (`update-page` branch)
+
+GitHub Pages is configured to serve the root of the `update-page`
+branch (Settings → Pages → Source). This branch shares no files, and
+no git history, with `main` (it's a separate orphan branch) — its
+content is a single minimal placeholder page:
+
+```bash
+git checkout update-page
+# edit index.html
+git add index.html
+git commit -m "..."
+git push origin update-page
+git checkout main
+```
+
+Don't touch `main`'s code on this branch, and don't merge it back into
+`main` — the two are deliberately kept with no shared history.
