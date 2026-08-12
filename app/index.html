@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>劇本殺繁化助手</title>
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://accounts.google.com/gsi/client"></script>
+</head>
+<body>
+  <header class="top-bar" id="top-bar">
+    <button type="button" id="admin-toggle-btn" class="admin-toggle-btn" hidden>管理員介面</button>
+    <div id="google-signin-button" class="google-signin-btn"></div>
+    <div class="account-slot" id="account-slot" hidden>
+      <span class="account-slot__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>
+        </svg>
+      </span>
+      <span class="account-slot__label" id="account-label">帳號</span>
+      <div class="account-dropdown" id="account-dropdown" hidden>
+        <button type="button" class="account-dropdown__item" id="btn-sign-out">登出</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <h1>劇本殺繁化助手</h1>
+    <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 潤飾</p>
+
+    <div class="page-layout">
+      <div class="sidebar-column">
+        <section class="notice-box" id="ta-notice-box">
+          <h2>阿舍老師的叮嚀</h2>
+          <p id="ta-notice-text" class="notice-text">載入中…</p>
+        </section>
+      </div>
+
+      <div class="main-column">
+        <section class="usage-box" id="usage-box">
+          <h2>今日使用量</h2>
+          <div id="usage-list" class="usage-list">載入中…</div>
+
+          <h2>本案處理劇本</h2>
+          <div class="project-picker-row">
+            <select id="project-select"></select>
+            <button type="button" id="project-confirm-btn">確定</button>
+          </div>
+
+          <div id="project-usage-block" hidden>
+            <h2>本案使用Claude token狀況</h2>
+            <div id="project-usage-list" class="usage-list">載入中…</div>
+          </div>
+        </section>
+
+        <div class="columns">
+          <div class="column">
+            <section class="upload-box" id="upload-box">
+              <h2>Stage 1：簡轉繁</h2>
+
+              <div id="stage1-form-group">
+                <div class="field">
+                  <label for="file-input">PDF 檔案</label>
+                  <input type="file" id="file-input" accept="application/pdf" />
+                </div>
+
+                <div class="field">
+                  <label for="model-select">Model</label>
+                  <select id="model-select"></select>
+                  <p class="field-help" id="model-help"></p>
+                </div>
+
+                <div class="field">
+                  <label for="batch-select">批次頁數</label>
+                  <select id="batch-select">
+                    <option value="5">5 頁</option>
+                    <option value="10">10 頁</option>
+                    <option value="20">20 頁</option>
+                    <option value="30">30 頁</option>
+                    <option value="whole">整本丟（不分批）</option>
+                  </select>
+                  <p class="field-help" id="batch-help"></p>
+                </div>
+
+                <div class="field">
+                  <label for="retry-input">API 失敗重試次數</label>
+                  <input type="number" id="retry-input" />
+                  <p class="field-help" id="retry-help"></p>
+                </div>
+
+                <div class="field">
+                  <label for="dpi-input">PDF 轉圖片解析度（DPI）</label>
+                  <input type="number" id="dpi-input" />
+                  <p class="field-help" id="dpi-help"></p>
+                </div>
+
+                <div class="field">
+                  <label class="switch-row" for="detect-cover-toggle">
+                    <span>偵測首頁是否為封面</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="detect-cover-toggle" checked />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    偵測首頁是否為含圖片之封面，若是則移除。
+                  </p>
+                </div>
+
+                <div class="field">
+                  <label class="switch-row" for="auto-review-toggle">
+                    <span>直接進行校對</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="auto-review-toggle" checked />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    開啟時，Stage 1 完成後會自動帶著結果直接開始 Stage 2 校對，
+                    沿用 Stage 1 用的 model；關閉則維持原本要手動按「開始校對」的流程。
+                  </p>
+                </div>
+
+                <div class="field">
+                  <label class="switch-row" for="docx-toggle">
+                    <span>輸出格式</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">txt</span>
+                      <span class="switch">
+                        <input type="checkbox" id="docx-toggle" />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">docx</span>
+                    </span>
+                  </label>
+                </div>
+
+                <button id="submit-btn">上傳並開始繁化</button>
+              </div>
+            </section>
+
+            <section class="status-box" id="status-box" hidden>
+              <h2>處理進度</h2>
+              <p id="status-line">狀態：<span id="status-text">-</span></p>
+              <ul id="log-list"></ul>
+              <div class="download-row">
+                <button id="download-btn" disabled>下載繁化結果</button>
+                <button id="start-review-btn" disabled>Stage 2：開始校對</button>
+              </div>
+            </section>
+          </div>
+
+          <div class="column">
+            <section class="review-box" id="review-box">
+              <h2>Stage 2：校對</h2>
+
+              <div class="field direct-upload-field" id="direct-upload-field">
+                <label for="direct-upload-input">直接上傳繁體內容（跳過 Stage 1）</label>
+                <input type="file" id="direct-upload-input" accept=".docx,.txt" />
+                <button id="direct-upload-btn" type="button">直接上傳並解鎖校對</button>
+                <p class="field-help">
+                  上傳 Stage 1 可能輸出的 .docx 或 .txt 檔案，不需要先跑 Stage 1
+                  就能直接校對。一旦 Stage 1 開始處理，這個選項就會被鎖住。
+                </p>
+              </div>
+
+              <div id="stage2-locked-group">
+                <div class="field">
+                  <label for="review-model-select">Model</label>
+                  <select id="review-model-select" disabled></select>
+                  <p class="field-help" id="review-model-help"></p>
+                </div>
+
+                <div class="field">
+                  <label for="review-batch-select">批次字數</label>
+                  <select id="review-batch-select" disabled>
+                    <option value="1000">1000 字</option>
+                    <option value="3000">3000 字</option>
+                    <option value="6000">6000 字</option>
+                    <option value="10000">10000 字</option>
+                    <option value="whole">全文（不分批）</option>
+                  </select>
+                  <p class="field-help" id="review-batch-help"></p>
+                </div>
+
+                <div class="field">
+                  <label for="review-retry-input">API 失敗重試次數</label>
+                  <input type="number" id="review-retry-input" disabled />
+                  <p class="field-help" id="review-retry-help"></p>
+                </div>
+
+                <div class="field">
+                  <label class="switch-row" for="review-docx-toggle">
+                    <span>輸出格式</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">txt</span>
+                      <span class="switch">
+                        <input type="checkbox" id="review-docx-toggle" />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">docx</span>
+                    </span>
+                  </label>
+                </div>
+
+                <button id="review-run-btn" disabled>開始校對</button>
+              </div>
+
+              <div id="review-progress" hidden>
+                <p>狀態：<span id="review-status-text">-</span></p>
+                <ul id="review-log-list"></ul>
+              </div>
+
+              <div id="review-findings-section" hidden>
+                <div class="findings-toolbar">
+                  <button id="select-all-btn" type="button">全選</button>
+                  <button id="select-none-btn" type="button">全不選</button>
+                  <span id="findings-count" class="field-help"></span>
+                </div>
+                <div class="findings-scroll-wrap">
+                  <ul id="findings-list"></ul>
+                  <div id="findings-scroll-hint" class="scroll-hint" hidden>▾</div>
+                </div>
+
+                <div class="download-row">
+                  <button id="apply-btn" type="button">套用勾選項目</button>
+                  <button id="review-download-btn" type="button" disabled>下載校對後結果</button>
+                  <button id="rerun-btn" type="button" disabled>重新校對（用套用後的文字）</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <main class="admin-container" id="admin-container" hidden>
+    <h1>管理員介面</h1>
+
+    <section class="admin-usage-totals" id="admin-usage-totals">
+      <h2>Claude Token 總使用量</h2>
+      <div id="admin-usage-totals-list" class="usage-list">載入中…</div>
+    </section>
+
+    <div class="admin-tabs">
+      <button type="button" class="admin-tab-btn active" data-tab="users">使用者管理</button>
+      <button type="button" class="admin-tab-btn" data-tab="permissions">權限管理</button>
+      <button type="button" class="admin-tab-btn" data-tab="projects">專案管理</button>
+    </div>
+
+    <!-- 使用者管理 -->
+    <section class="admin-panel" id="admin-panel-users">
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-user-select">管理成員</label>
+          <select id="admin-user-select"></select>
+        </div>
+        <button type="button" id="admin-user-load-btn">讀取</button>
+        <button type="button" id="admin-user-edit-btn" disabled>編輯</button>
+        <button type="button" id="admin-user-new-btn">新建</button>
+      </div>
+
+      <div class="admin-fields" id="admin-user-fields" hidden>
+        <div class="field" id="admin-user-id-field">
+          <label for="admin-user-id">ID</label>
+          <input type="text" id="admin-user-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-email">信箱</label>
+          <input type="text" id="admin-user-email" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-name">姓名</label>
+          <input type="text" id="admin-user-name" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-user-role">權限</label>
+          <select id="admin-user-role" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-user-status">狀態</label>
+          <select id="admin-user-status" disabled>
+            <option value="active">active</option>
+            <option value="deactive">deactive</option>
+          </select>
+        </div>
+        <div class="admin-fields-actions" id="admin-user-create-actions" hidden>
+          <button type="button" id="admin-user-create-submit-btn">建立</button>
+          <button type="button" id="admin-user-create-cancel-btn">取消</button>
+        </div>
+      </div>
+
+      <div class="admin-user-projects" id="admin-user-projects-block" hidden>
+        <h3>負責的專案</h3>
+        <div id="admin-user-projects-list" class="usage-list">載入中…</div>
+      </div>
+    </section>
+
+    <!-- 權限管理 -->
+    <section class="admin-panel" id="admin-panel-permissions" hidden>
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-permission-select">選擇權限</label>
+          <select id="admin-permission-select"></select>
+        </div>
+        <button type="button" id="admin-permission-load-btn">讀取</button>
+        <button type="button" id="admin-permission-edit-btn" disabled>編輯</button>
+      </div>
+
+      <div class="admin-fields" id="admin-permission-fields" hidden>
+        <div class="field">
+          <label for="admin-permission-id">ID</label>
+          <input type="text" id="admin-permission-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-permission-role">權限</label>
+          <select id="admin-permission-role" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-permission-haiku">Haiku 使用上限</label>
+          <input type="number" id="admin-permission-haiku" disabled min="0" />
+        </div>
+      </div>
+    </section>
+
+    <!-- 專案管理 -->
+    <section class="admin-panel" id="admin-panel-projects" hidden>
+      <div class="admin-select-row">
+        <div class="field">
+          <label for="admin-project-select">選擇專案</label>
+          <select id="admin-project-select"></select>
+        </div>
+        <button type="button" id="admin-project-load-btn">讀取</button>
+        <button type="button" id="admin-project-edit-btn" disabled>編輯</button>
+        <button type="button" id="admin-project-new-btn">新建</button>
+      </div>
+
+      <div class="admin-fields" id="admin-project-fields" hidden>
+        <div class="field" id="admin-project-id-field">
+          <label for="admin-project-id">ID</label>
+          <input type="text" id="admin-project-id" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-project-name">名稱</label>
+          <input type="text" id="admin-project-name" disabled />
+        </div>
+        <div class="field">
+          <label for="admin-project-owner">負責人</label>
+          <select id="admin-project-owner" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-project-status">狀態</label>
+          <select id="admin-project-status" disabled>
+            <option value="pending">pending</option>
+            <option value="ongoing">ongoing</option>
+            <option value="delayed">delayed</option>
+            <option value="done_not_paid">done_not_paid</option>
+            <option value="paid">paid</option>
+            <option value="closed">closed</option>
+          </select>
+        </div>
+        <div class="admin-fields-actions" id="admin-project-create-actions" hidden>
+          <button type="button" id="admin-project-create-submit-btn">建立</button>
+          <button type="button" id="admin-project-create-cancel-btn">取消</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
