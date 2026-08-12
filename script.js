@@ -1034,12 +1034,15 @@ function pollJob(jobId) {
 
     statusText.textContent = job.status_label || job.status;
     renderNewLogs(job.logs);
-    loadUsage();
-
+    // 刻意不在這裡呼叫 loadUsage()：用量數字不需要即時。它每次會扇出兩個
+    // 請求（/api/usage 自己還會依 model 數量分別查 DB），放在每一輪輪詢
+    // 等於一個人操作就能讓每輪產生 5-6 條資料庫連線，而使用者根本不會
+    // 盯著這個數字看它跳動。改成只在「登入時」跟「每個 stage 結束時」更新。
     if (job.status === "done") {
       clearInterval(pollTimer);
       isProcessing = false;
       refreshLockStates();
+      loadUsage();
       currentJobId = jobId;
       downloadBtn.disabled = !job.has_result;
       startReviewBtn.disabled = !job.has_result;
@@ -1051,10 +1054,13 @@ function pollJob(jobId) {
       clearInterval(pollTimer);
       isProcessing = false;
       refreshLockStates();
+      // 失敗前很可能已經燒掉一些 token，這也算 stage 結束，要更新用量
+      loadUsage();
     } else if (job.status === "interrupted") {
       clearInterval(pollTimer);
       isProcessing = false;
       refreshLockStates();
+      loadUsage();
       showInterruptedDialog({
         hasPartial: job.has_partial,
         onRetry: () => {
@@ -1353,13 +1359,17 @@ function pollReview(reviewId) {
 
     reviewStatusText.textContent = review.status_label || review.status;
     renderNewReviewLogs(review.logs);
-    loadUsage();
-    loadProjectUsage();
-
+    // 刻意不在這裡呼叫 loadUsage()/loadProjectUsage()：這兩個數字都不需要
+    // 即時。放在每一輪輪詢的話，光是 Stage 2 跑著就會讓一個人的操作每輪
+    // 產生好幾條資料庫連線，而使用者不會盯著用量數字看它跳動。改成只在
+    // 「登入時」跟「每個 stage 結束時（含失敗/中斷，那時候 token 也已經
+    // 花掉了）」更新。
     if (review.status === "done") {
       clearInterval(reviewPollTimer);
       isProcessing = false;
       refreshLockStates();
+      loadUsage();
+      loadProjectUsage();
       renderFindings(review.findings);
       // 校對一旦完成就能下載，不管有沒有套用任何建議——不套用就是
       // 下載校對前的原始文字，不應該綁在「有沒有按過套用」上
@@ -1368,10 +1378,14 @@ function pollReview(reviewId) {
       clearInterval(reviewPollTimer);
       isProcessing = false;
       refreshLockStates();
+      loadUsage();
+      loadProjectUsage();
     } else if (review.status === "interrupted") {
       clearInterval(reviewPollTimer);
       isProcessing = false;
       refreshLockStates();
+      loadUsage();
+      loadProjectUsage();
       showInterruptedDialog({
         hasPartial: review.has_partial,
         onRetry: () => {
