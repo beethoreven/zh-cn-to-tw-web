@@ -937,7 +937,7 @@ function pollLocalOcrJob(jobId) {
           ? `本機 OCR 辨識中（第 ${job.current_page}/${job.total_pages} 頁）`
           : "本機 OCR 辨識中";
       }
-    }, 1500);
+    }, 5000);
   });
 }
 
@@ -1064,7 +1064,7 @@ function pollJob(jobId) {
         },
       });
     }
-  }, 1500);
+  }, 5000);
 }
 
 downloadBtn.addEventListener("click", async () => {
@@ -1381,7 +1381,7 @@ function pollReview(reviewId) {
         },
       });
     }
-  }, 1500);
+  }, 5000);
 }
 
 function renderNewReviewLogs(logs) {
