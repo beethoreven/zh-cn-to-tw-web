@@ -684,7 +684,20 @@ async function loadOptions() {
   dpiHelp.textContent = opts.dpi.description;
 }
 
+// 用量顯示只是輔助資訊，抓不到不該影響任何主要流程。這裡自己把錯誤吞掉
+// （只留 console.warn），是因為呼叫端多半是「順手更新一下」的 fire-and-forget
+// 寫法（例如輪詢每一輪都會呼叫），沒有人 await、也沒有人 catch——後端一有
+// 狀況就會變成 unhandled rejection，而且每輪輪詢再噴一次，console 直接被洗版，
+// 把真正有用的錯誤訊息淹掉（實測撞過：後端卡住時整個 console 全是這個）。
 async function loadUsage() {
+  try {
+    await _loadUsageInner();
+  } catch (e) {
+    console.warn("[usage] 取得用量失敗，略過這次更新：", e.message);
+  }
+}
+
+async function _loadUsageInner() {
   const res = await authedFetch(`${API_BASE}/api/usage`);
   const usage = await res.json();
 
