@@ -27,6 +27,35 @@ const API_BASE =
 // 設計文件）。純瀏覽器開啟（網址沒有這些參數）行為完全不受影響。
 const DESKTOP_MODE = desktopParams.get("desktop") === "1";
 const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
+// 桌面殼載入頁面時帶的自己的版本號（見 zh-cn-to-tw-mac 的
+// ContentView.desktopURL()），只有 major/minor 兩碼，跟後端
+// GET /api/version_check 比較邏輯一致。
+const DESKTOP_APP_MAJOR = Number(desktopParams.get("appMajor") ?? "0");
+const DESKTOP_APP_MINOR = Number(desktopParams.get("appMinor") ?? "0");
+
+// 在真的要開始 Stage 1/2 工作之前檢查有沒有被要求強制更新。只有桌面版
+// 會檢查——瀏覽器版沒有「App 版本」這個概念，也沒有對應的 DMG 更新
+// 流程。回傳 true 代表可以繼續往下跑，false 代表被擋下來，呼叫端要
+// 直接 return，不要繼續送出工作。查詢本身失敗（網路問題、backend 還在
+// 冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，這個
+// 檢查只在明確查到「版本太舊」時才生效。
+async function checkVersionOrBlock() {
+  if (!DESKTOP_MODE) return true;
+  let data;
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/version_check?os=macos&major=${DESKTOP_APP_MAJOR}&minor=${DESKTOP_APP_MINOR}`
+    );
+    data = await res.json();
+  } catch (e) {
+    return true;
+  }
+  if (!data.force_update) return true;
+  alert(
+    `目前 App 版本過舊（最低需求版本 ${data.min_version}），請先更新才能繼續使用。\n\n請至以下網址下載最新版本：\n${data.update_url}`
+  );
+  return false;
+}
 
 // 本機 OCR service 是「用到才開、用完就關」的：它只在 Stage 1 的 OCR 那一步
 // 派得上用場，其他時候（潤飾、Stage 2 校對、下載、登入）完全沒事做，而且
@@ -803,6 +832,8 @@ projectConfirmBtnEl.addEventListener("click", () => {
 });
 
 submitBtn.addEventListener("click", async () => {
+  if (!(await checkVersionOrBlock())) return;
+
   const file = fileInput.files[0];
   if (!file) {
     alert("請先選擇 PDF 檔案");
@@ -1327,6 +1358,7 @@ reviewRunBtn.addEventListener("click", runReview);
 
 async function runReview() {
   if (!currentJobId) return;
+  if (!(await checkVersionOrBlock())) return;
 
   const retryError = validateBoundedInput(reviewRetryInput, "API 失敗重試次數");
   if (retryError) {
@@ -1570,6 +1602,7 @@ window.__attemptAutoSaveBeforeSleep = function () {
 
 rerunBtn.addEventListener("click", async () => {
   if (!currentReviewId) return;
+  if (!(await checkVersionOrBlock())) return;
 
   const formData = new FormData();
   formData.append("model", reviewModelSelect.value);

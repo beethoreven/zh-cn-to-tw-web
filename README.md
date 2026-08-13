@@ -51,6 +51,12 @@ OCR 階段結束（不管成功失敗）都在 `finally` 裡請桌面殼把服�
 
 這個保護只在工作**真的在跑**的時候生效，工作一完成就解除——但「工作跑完」跟「使用者真的把結果存到本機」中間還有一段空窗，使用者完全可能把工作丟著跑一整晚、隔天早上才來看，這段空窗遠比工作實際執行的時間長。為了接住這段空窗，另外用一個 `hasDownloaded` 旗標追蹤「目前最新一份結果使用者存下來了沒」，規則只跟按鍵動作綁定：按下「上傳並開始繁化」或「開始校對」（含「直接進行校對」自動觸發的那次）一律變 `false`，真的下載成功（不是只是點了按鍵）一律變 `true`。桌面殼在系統即將睡眠前，會呼叫 `window.__attemptAutoSaveBeforeSleep()`（見下方定義），如果 `hasDownloaded` 還是 `false` 且下載鍵目前可以按，就自動幫使用者點一次——**這是 best-effort，不是保證機制**：`NSWorkspace` 的睡眠通知沒辦法真的延後睡眠，來不來得及跑完（尤其 Render 剛好進入休眠、要 30-90 秒喚醒的情況）沒有保證，完整取捨見 `zh-cn-to-tw-mac` README。
 
+### 桌面版的強制更新檢查
+
+`zh-cn-to-tw-mac` 載入頁面時，網址除了 `desktop=1&ocrToken=...&apiBase=...`，還會多帶 `appMajor`/`appMinor`（這個 App 自己的版本號，只有兩碼，見該 repo README）。`script.js` 在 Stage 1 送出（`submit-btn`）、Stage 2 開始校對（`review-run-btn` 觸發的 `runReview()`，含「直接進行校對」自動觸發的那次）、Stage 2 重新校對（`rerun-btn`）這三個真正會開始跑工作的按鍵，都先呼叫 `checkVersionOrBlock()` 打 `GET /api/version_check`，把 `appMajor`/`appMinor` 帶過去問 backend 這個版本夠不夠新。
+
+`force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。純瀏覽器開啟（沒有 `desktop=1`）完全不會觸發這個檢查，瀏覽器版沒有「App 版本」這個概念。
+
 ### 為什麼用量數字不走輪詢
 
 Stage 1/Stage 2 執行中會輪詢後端查進度，原本 `loadUsage()`（今日 Gemini 額度、Claude token 費用）也掛在同一個輪詢迴圈裡，每輪一起打。
@@ -174,6 +180,12 @@ The service's port isn't fixed and changes every time it starts/stops, so it's *
 `isProcessing` (true whenever Stage 1 or Stage 2 is actively running) originally only locked the UI; the desktop build hooks one more thing onto it: every write site now goes through a shared `setProcessing()`, which in desktop mode also notifies the shell via `window.webkit.messageHandlers.activityGuard.postMessage({action: "start"|"stop"})`. The shell responds by calling `ProcessInfo.beginActivity` to ask the system not to let the whole machine sleep for that stretch — a user might leave a big script running overnight, and having the job interrupted mid-way by system sleep costs already-paid-for LLM calls, which is worse than a bit of extra power draw. Full shell-side story in `zh-cn-to-tw-mac`'s README.
 
 This protection only holds while a job is genuinely **running** — it lifts the moment the job finishes. But there's a gap between "job done" and "user actually saved the result locally," and a user can easily leave a finished job sitting untouched overnight, far longer than the job itself took to run. To catch that gap, a separate `hasDownloaded` flag tracks whether the latest result has been saved, with rules tied purely to button actions: clicking "上傳並開始繁化" or "開始校對" (including the auto-triggered one from "直接進行校對") always sets it to `false`; a download that actually succeeds (not just a click) always sets it to `true`. Right before the system sleeps, the shell calls `window.__attemptAutoSaveBeforeSleep()` (defined below), which clicks the download button on the user's behalf if `hasDownloaded` is still `false` and a result is ready — **this is best-effort, not a guarantee**: `NSWorkspace`'s sleep notification can't actually delay sleep, so whether this finishes in time (especially if Render happens to be asleep and needs 30–90 seconds to wake) isn't assured. Full tradeoff discussion in `zh-cn-to-tw-mac`'s README.
+
+### Desktop Forced-Update Check
+
+When `zh-cn-to-tw-mac` loads the page, the URL carries `appMajor`/`appMinor` alongside `desktop=1&ocrToken=...&apiBase=...` — this app's own version number, only two digits (see that repo's README). `script.js` calls `checkVersionOrBlock()` — which hits `GET /api/version_check`, passing `appMajor`/`appMinor` — before each of the three buttons that actually kick off work: Stage 1 submit (`submit-btn`), Stage 2 starting review (`review-run-btn`'s `runReview()`, including the auto-triggered call from "直接進行校對"), and Stage 2 rerun (`rerun-btn`).
+
+If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. Plain browser opens (no `desktop=1`) never trigger this check at all — the browser build has no concept of an "app version."
 
 ### Why Usage Numbers Aren't Polled
 
