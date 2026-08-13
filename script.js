@@ -573,6 +573,22 @@ let stage1Started = false;
 let isProcessing = false;
 let stage2Unlocked = false;
 
+// 桌面殼在真的有工作進行中（Stage 1 或 Stage 2 任一個）時，請系統別
+// 把 App 睡掉、也別把 WebView 背後的 Web Content process 標成「不活躍」
+// 而優先砍掉回收記憶體——真的有工作在跑時被打斷，代價是已經付費的
+// LLM 呼叫全部作廢，比單純被系統睡掉更貴。只在 isProcessing 真的變化
+// 時才通知殼，不是每次呼叫都送一次；殼那邊用計數器處理 Stage 1/2
+// 短暫重疊進行的情況（見 zh-cn-to-tw-mac 的 SystemActivityGuard）。
+function setProcessing(value) {
+  if (value === isProcessing) return;
+  isProcessing = value;
+  if (DESKTOP_MODE) {
+    window.webkit.messageHandlers.activityGuard.postMessage({
+      action: value ? "start" : "stop",
+    });
+  }
+}
+
 const projectSelectEl = document.getElementById("project-select");
 const projectConfirmBtnEl = document.getElementById("project-confirm-btn");
 const projectUsageBlockEl = document.getElementById("project-usage-block");
@@ -804,7 +820,7 @@ submitBtn.addEventListener("click", async () => {
 
   lastStage1Model = modelSelect.value;
   stage1Started = true;
-  isProcessing = true;
+  setProcessing(true);
   stage2Unlocked = false;
   refreshLockStates();
   statusBox.hidden = false;
@@ -901,7 +917,7 @@ submitBtn.addEventListener("click", async () => {
     } else {
       statusText.textContent = `錯誤：${e.message}`;
     }
-    isProcessing = false;
+    setProcessing(false);
     refreshLockStates();
   }
 });
@@ -1028,7 +1044,7 @@ function pollJob(jobId) {
       // 最後一筆進度不動又不說原因
       clearInterval(pollTimer);
       statusText.textContent = `錯誤：${job.error || "找不到這個處理進度，可能是伺服器重啟過，請重新上傳"}`;
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       return;
     }
@@ -1041,7 +1057,7 @@ function pollJob(jobId) {
     // 盯著這個數字看它跳動。改成只在「登入時」跟「每個 stage 結束時」更新。
     if (job.status === "done") {
       clearInterval(pollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       loadUsage();
       currentJobId = jobId;
@@ -1053,19 +1069,19 @@ function pollJob(jobId) {
       }
     } else if (job.status === "failed") {
       clearInterval(pollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       // 失敗前很可能已經燒掉一些 token，這也算 stage 結束，要更新用量
       loadUsage();
     } else if (job.status === "interrupted") {
       clearInterval(pollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       loadUsage();
       showInterruptedDialog({
         hasPartial: job.has_partial,
         onRetry: () => {
-          isProcessing = true;
+          setProcessing(true);
           refreshLockStates();
           pollJob(jobId);
         },
@@ -1278,7 +1294,7 @@ function resetJobAndReviewState() {
   currentJobId = null;
   currentReviewId = null;
   stage1Started = false;
-  isProcessing = false;
+  setProcessing(false);
   stage2Unlocked = false;
   renderedLogCount = 0;
   renderedReviewLogCount = 0;
@@ -1311,7 +1327,7 @@ async function runReview() {
   formData.append("max_retry", reviewRetryInput.value);
   formData.append("project", currentProjectId);
 
-  isProcessing = true;
+  setProcessing(true);
   refreshLockStates();
   resetReviewUI();
 
@@ -1334,7 +1350,7 @@ async function runReview() {
     } else {
       reviewStatusText.textContent = `錯誤：${e.message}`;
     }
-    isProcessing = false;
+    setProcessing(false);
     refreshLockStates();
   }
 }
@@ -1353,7 +1369,7 @@ function pollReview(reviewId) {
     if (!res.ok) {
       clearInterval(reviewPollTimer);
       reviewStatusText.textContent = `錯誤：${review.error || "找不到這個處理進度，可能是伺服器重啟過，請重新開始校對"}`;
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       return;
     }
@@ -1367,7 +1383,7 @@ function pollReview(reviewId) {
     // 花掉了）」更新。
     if (review.status === "done") {
       clearInterval(reviewPollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       loadUsage();
       loadProjectUsage();
@@ -1377,20 +1393,20 @@ function pollReview(reviewId) {
       reviewDownloadBtn.disabled = false;
     } else if (review.status === "failed") {
       clearInterval(reviewPollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       loadUsage();
       loadProjectUsage();
     } else if (review.status === "interrupted") {
       clearInterval(reviewPollTimer);
-      isProcessing = false;
+      setProcessing(false);
       refreshLockStates();
       loadUsage();
       loadProjectUsage();
       showInterruptedDialog({
         hasPartial: review.has_partial,
         onRetry: () => {
-          isProcessing = true;
+          setProcessing(true);
           refreshLockStates();
           pollReview(reviewId);
         },
@@ -1526,7 +1542,7 @@ rerunBtn.addEventListener("click", async () => {
   formData.append("max_retry", reviewRetryInput.value);
   formData.append("project", currentProjectId);
 
-  isProcessing = true;
+  setProcessing(true);
   refreshLockStates();
   resetReviewUI();
 
@@ -1549,7 +1565,7 @@ rerunBtn.addEventListener("click", async () => {
     } else {
       reviewStatusText.textContent = `錯誤：${e.message}`;
     }
-    isProcessing = false;
+    setProcessing(false);
     refreshLockStates();
   }
 });

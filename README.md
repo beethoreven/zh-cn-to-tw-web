@@ -45,6 +45,10 @@ OCR 階段結束（不管成功失敗）都在 `finally` 裡請桌面殼把服�
 
 服務的 port 不是固定值，而且會隨著開關而改變，**故意不寫進網址查詢參數裡**（那樣一變動就要重新載入整個頁面，會清掉使用者做到一半的表單狀態）——改成桌面殼用 `evaluateJavaScript` 直接把最新 port 寫進 `window.__OCR_PORT__`，`script.js` 每次要打本機 OCR API 前才即時讀這個值。
 
+### 為什麼桌面版有工作在跑時要請系統別睡掉
+
+`isProcessing` 這個變數（Stage 1/2 任一個正在跑就是 `true`）原本只用來鎖 UI，桌面版另外多接了一件事：所有寫入點改走統一的 `setProcessing()`，桌面模式下會透過 `window.webkit.messageHandlers.activityGuard.postMessage({action: "start"|"stop"})` 通知桌面殼。桌面殼收到後用 `ProcessInfo.beginActivity` 請系統在這段期間別把整台機器睡掉——使用者可能把一份大劇本丟著跑一整晚，工作進行到一半被系統睡掉打斷，代價是已經付費的 LLM 呼叫全部作廢，比單純多耗一點電更貴。完整的殼端說明見 `zh-cn-to-tw-mac` README。
+
 ### 為什麼用量數字不走輪詢
 
 Stage 1/Stage 2 執行中會輪詢後端查進度，原本 `loadUsage()`（今日 Gemini 額度、Claude token 費用）也掛在同一個輪詢迴圈裡，每輪一起打。
@@ -162,6 +166,10 @@ Problem: once PaddleOCR's models load, they sit at a measured **393MB** resident
 Once the OCR step ends (success or failure), a `finally` block asks the shell to stop the service. The original auto-respawning health check was removed.
 
 The service's port isn't fixed and changes every time it starts/stops, so it's **deliberately not written into the URL query string** (which would require a full page reload on every change, wiping out whatever the user had half-filled in). Instead, the shell pushes the current port straight into `window.__OCR_PORT__` via `evaluateJavaScript`, and `script.js` reads that value fresh right before each local-OCR API call.
+
+### Why the Desktop Build Asks the System Not to Sleep While a Job Is Running
+
+`isProcessing` (true whenever Stage 1 or Stage 2 is actively running) originally only locked the UI; the desktop build hooks one more thing onto it: every write site now goes through a shared `setProcessing()`, which in desktop mode also notifies the shell via `window.webkit.messageHandlers.activityGuard.postMessage({action: "start"|"stop"})`. The shell responds by calling `ProcessInfo.beginActivity` to ask the system not to let the whole machine sleep for that stretch — a user might leave a big script running overnight, and having the job interrupted mid-way by system sleep costs already-paid-for LLM calls, which is worse than a bit of extra power draw. Full shell-side story in `zh-cn-to-tw-mac`'s README.
 
 ### Why Usage Numbers Aren't Polled
 
