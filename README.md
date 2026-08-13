@@ -49,6 +49,8 @@ OCR 階段結束（不管成功失敗）都在 `finally` 裡請桌面殼把服�
 
 `isProcessing` 這個變數（Stage 1/2 任一個正在跑就是 `true`）原本只用來鎖 UI，桌面版另外多接了一件事：所有寫入點改走統一的 `setProcessing()`，桌面模式下會透過 `window.webkit.messageHandlers.activityGuard.postMessage({action: "start"|"stop"})` 通知桌面殼。桌面殼收到後用 `ProcessInfo.beginActivity` 請系統在這段期間別把整台機器睡掉——使用者可能把一份大劇本丟著跑一整晚，工作進行到一半被系統睡掉打斷，代價是已經付費的 LLM 呼叫全部作廢，比單純多耗一點電更貴。完整的殼端說明見 `zh-cn-to-tw-mac` README。
 
+這個保護只在工作**真的在跑**的時候生效，工作一完成就解除——但「工作跑完」跟「使用者真的把結果存到本機」中間還有一段空窗，使用者完全可能把工作丟著跑一整晚、隔天早上才來看，這段空窗遠比工作實際執行的時間長。為了接住這段空窗，另外用一個 `hasDownloaded` 旗標追蹤「目前最新一份結果使用者存下來了沒」，規則只跟按鍵動作綁定：按下「上傳並開始繁化」或「開始校對」（含「直接進行校對」自動觸發的那次）一律變 `false`，真的下載成功（不是只是點了按鍵）一律變 `true`。桌面殼在系統即將睡眠前，會呼叫 `window.__attemptAutoSaveBeforeSleep()`（見下方定義），如果 `hasDownloaded` 還是 `false` 且下載鍵目前可以按，就自動幫使用者點一次——**這是 best-effort，不是保證機制**：`NSWorkspace` 的睡眠通知沒辦法真的延後睡眠，來不來得及跑完（尤其 Render 剛好進入休眠、要 30-90 秒喚醒的情況）沒有保證，完整取捨見 `zh-cn-to-tw-mac` README。
+
 ### 為什麼用量數字不走輪詢
 
 Stage 1/Stage 2 執行中會輪詢後端查進度，原本 `loadUsage()`（今日 Gemini 額度、Claude token 費用）也掛在同一個輪詢迴圈裡，每輪一起打。
@@ -170,6 +172,8 @@ The service's port isn't fixed and changes every time it starts/stops, so it's *
 ### Why the Desktop Build Asks the System Not to Sleep While a Job Is Running
 
 `isProcessing` (true whenever Stage 1 or Stage 2 is actively running) originally only locked the UI; the desktop build hooks one more thing onto it: every write site now goes through a shared `setProcessing()`, which in desktop mode also notifies the shell via `window.webkit.messageHandlers.activityGuard.postMessage({action: "start"|"stop"})`. The shell responds by calling `ProcessInfo.beginActivity` to ask the system not to let the whole machine sleep for that stretch — a user might leave a big script running overnight, and having the job interrupted mid-way by system sleep costs already-paid-for LLM calls, which is worse than a bit of extra power draw. Full shell-side story in `zh-cn-to-tw-mac`'s README.
+
+This protection only holds while a job is genuinely **running** — it lifts the moment the job finishes. But there's a gap between "job done" and "user actually saved the result locally," and a user can easily leave a finished job sitting untouched overnight, far longer than the job itself took to run. To catch that gap, a separate `hasDownloaded` flag tracks whether the latest result has been saved, with rules tied purely to button actions: clicking "上傳並開始繁化" or "開始校對" (including the auto-triggered one from "直接進行校對") always sets it to `false`; a download that actually succeeds (not just a click) always sets it to `true`. Right before the system sleeps, the shell calls `window.__attemptAutoSaveBeforeSleep()` (defined below), which clicks the download button on the user's behalf if `hasDownloaded` is still `false` and a result is ready — **this is best-effort, not a guarantee**: `NSWorkspace`'s sleep notification can't actually delay sleep, so whether this finishes in time (especially if Render happens to be asleep and needs 30–90 seconds to wake) isn't assured. Full tradeoff discussion in `zh-cn-to-tw-mac`'s README.
 
 ### Why Usage Numbers Aren't Polled
 

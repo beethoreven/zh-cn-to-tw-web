@@ -573,6 +573,17 @@ let stage1Started = false;
 let isProcessing = false;
 let stage2Unlocked = false;
 
+// 使用者是不是已經把「目前最新一份」結果存到本機了——只跟按鍵動作綁定，
+// 跟畫面上顯示什麼、有沒有解鎖 Stage 2 這些狀態變化無關：
+// - 點「上傳並開始繁化」或「開始校對」（含「直接進行校對」自動觸發的
+//   那次）：不管原本是什麼，一律變 false，因為這代表一份新的、還沒
+//   下載的結果即將產生。
+// - 點下載鍵（Stage 1 或 Stage 2 的，真的下載成功時，不是點下去就算）：
+//   一律變 true。
+// 用來給桌面殼在系統即將睡眠前判斷「有沒有東西該幫使用者搶救」，見
+// window.__attemptAutoSaveBeforeSleep()。
+let hasDownloaded = false;
+
 // 桌面殼在真的有工作進行中（Stage 1 或 Stage 2 任一個）時，請系統別
 // 把 App 睡掉、也別把 WebView 背後的 Web Content process 標成「不活躍」
 // 而優先砍掉回收記憶體——真的有工作在跑時被打斷，代價是已經付費的
@@ -821,6 +832,7 @@ submitBtn.addEventListener("click", async () => {
   lastStage1Model = modelSelect.value;
   stage1Started = true;
   setProcessing(true);
+  hasDownloaded = false;
   stage2Unlocked = false;
   refreshLockStates();
   statusBox.hidden = false;
@@ -1109,6 +1121,7 @@ downloadBtn.addEventListener("click", async () => {
   const url = `${API_BASE}/api/jobs/${currentJobId}/download?format=${format}`;
   try {
     await downloadViaAuthedFetch(url, `download.${format}`);
+    hasDownloaded = true;
   } catch (e) {
     showToast(e.message, "error");
   }
@@ -1328,6 +1341,7 @@ async function runReview() {
   formData.append("project", currentProjectId);
 
   setProcessing(true);
+  hasDownloaded = false;
   refreshLockStates();
   resetReviewUI();
 
@@ -1528,10 +1542,31 @@ reviewDownloadBtn.addEventListener("click", async () => {
   const url = `${API_BASE}/api/reviews/${currentReviewId}/download?format=${format}`;
   try {
     await downloadViaAuthedFetch(url, `download.${format}`);
+    hasDownloaded = true;
   } catch (e) {
     showToast(e.message, "error");
   }
 });
+
+// 桌面殼在系統即將睡眠前呼叫這個函式（見 zh-cn-to-tw-mac 的
+// AppDelegate/WebView.swift），嘗試把使用者還沒下載的結果先存到本機的
+// 「下載項目」資料夾。這是 best-effort：NSWorkspace 的睡眠通知沒辦法
+// 真的延後睡眠，來不來得及跑完（尤其 Render 剛好進入休眠、要 30-90
+// 秒喚醒的情況）沒有保證，完整說明見 zh-cn-to-tw-mac README。
+//
+// 判斷「有沒有東西該搶救」直接看下載鍵是不是可以按（代表真的有結果
+// 在等待）加上 hasDownloaded 還是 false（代表使用者還沒自己存過）——
+// 兩個條件都符合才觸發，單純放著沒做任何事的閒置畫面不會被誤觸發。
+// Stage 2 的結果優先（比 Stage 1 的原始輸出更後面、更完整），兩邊都
+// 有得下載時只搶救 Stage 2 那一份。
+window.__attemptAutoSaveBeforeSleep = function () {
+  if (hasDownloaded) return;
+  if (!reviewDownloadBtn.disabled) {
+    reviewDownloadBtn.click();
+  } else if (!downloadBtn.disabled) {
+    downloadBtn.click();
+  }
+};
 
 rerunBtn.addEventListener("click", async () => {
   if (!currentReviewId) return;
@@ -1543,6 +1578,7 @@ rerunBtn.addEventListener("click", async () => {
   formData.append("project", currentProjectId);
 
   setProcessing(true);
+  hasDownloaded = false;
   refreshLockStates();
   resetReviewUI();
 
