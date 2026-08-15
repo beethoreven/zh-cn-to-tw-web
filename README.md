@@ -57,6 +57,12 @@ OCR 階段結束（不管成功失敗）都在 `finally` 裡請桌面殼把服�
 
 `force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。純瀏覽器開啟（沒有 `desktop=1`）完全不會觸發這個檢查，瀏覽器版沒有「App 版本」這個概念。
 
+網址上還會多帶一個 `osTier`（`"13+"` 或 `"12-"`，省略當 `"13+"`）——桌面殼分成兩個獨立版控的 build，`12-` 那包（macOS 12 以下、部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 用不到，這個值決定兩件事：
+
+- **Stage 1 UI 是否鎖住**：`osTier === "12-"` 時，`#stage1-title`/`#stage1-form-group` 整塊隱藏，只顯示 `#stage1-locked-message` 這一行「Stage 1功能只支援Mac OS 13以上。」——不是把表單欄位個別鎖住，因為這不是「暫時不能用」而是這包 build 永久性的限制。
+- **`checkVersionOrBlock()` 打 `version_check` 時帶哪個分流**：`os_version` 查詢參數直接帶這個值，後端 `app_versions` 表按 `(os, os_version)` 分開存兩包各自的門檻（見 `zh-cn-to-tw-backend` README「版本檢查」）。
+- **下載走哪條路**：`downloadViaAuthedFetch()` 平常用 `fetch` 拿 blob、組一個 `blob:` URL 模擬點擊觸發下載——這條路靠 `WKDownload`，`12-` 那包的 WKWebView 部署目標低於 `WKDownload` 要求的 macOS 11.3，完全沒有東西接手。`osTier === "12-"` 時改把整份檔案內容轉成 base64，直接 `postMessage` 給殼的 `legacyDownload` channel，由殼自己解碼寫進下載資料夾（見 `zh-cn-to-tw-mac` 的 `WebView.swift`）。
+
 ### 為什麼用量數字不走輪詢
 
 Stage 1/Stage 2 執行中會輪詢後端查進度，原本 `loadUsage()`（今日 Gemini 額度、Claude token 費用）也掛在同一個輪詢迴圈裡，每輪一起打。
@@ -186,6 +192,12 @@ This protection only holds while a job is genuinely **running** — it lifts the
 When `zh-cn-to-tw-mac` loads the page, the URL carries `appMajor`/`appMinor` alongside `desktop=1&ocrToken=...&apiBase=...` — this app's own version number, only two digits (see that repo's README). `script.js` calls `checkVersionOrBlock()` — which hits `GET /api/version_check`, passing `appMajor`/`appMinor` — before each of the three buttons that actually kick off work: Stage 1 submit (`submit-btn`), Stage 2 starting review (`review-run-btn`'s `runReview()`, including the auto-triggered call from "直接進行校對"), and Stage 2 rerun (`rerun-btn`).
 
 If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. Plain browser opens (no `desktop=1`) never trigger this check at all — the browser build has no concept of an "app version."
+
+The URL also carries `osTier` (`"13+"` or `"12-"`, defaulting to `"13+"` if absent) — the desktop shell now ships as two independently-versioned builds, and the `12-` one (macOS 12 and below, deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") can't use Stage 1. This value drives three things:
+
+- **Whether the Stage 1 UI is locked**: when `osTier === "12-"`, `#stage1-title`/`#stage1-form-group` are hidden entirely, leaving only `#stage1-locked-message` — "Stage 1功能只支援Mac OS 13以上。" Not a per-field lock, since this isn't "temporarily unavailable" but a permanent limitation of that build.
+- **Which tier `checkVersionOrBlock()` queries**: passed straight through as the `os_version` query parameter — the backend's `app_versions` table keys its thresholds by `(os, os_version)`, one row per tier (see `zh-cn-to-tw-backend`'s README, "Version Check").
+- **Which download path is used**: `downloadViaAuthedFetch()` normally fetches the file as a blob and simulates a click on a `blob:` URL — that path relies on `WKDownload`, which needs macOS 11.3+; the `12-` build's WKWebView sits below that floor, so nothing picks up the navigation. When `osTier === "12-"`, the file content is base64-encoded and `postMessage`d to the shell's `legacyDownload` channel instead, which decodes it and writes it to the Downloads folder natively (see `WebView.swift` in `zh-cn-to-tw-mac`).
 
 ### Why Usage Numbers Aren't Polled
 

@@ -32,6 +32,13 @@ const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
 // GET /api/version_check 比較邏輯一致。
 const DESKTOP_APP_MAJOR = Number(desktopParams.get("appMajor") ?? "0");
 const DESKTOP_APP_MINOR = Number(desktopParams.get("appMinor") ?? "0");
+// 這包桌面殼屬於哪一個版控分流："13+" 是完整版（Stage 1 也能用），
+// "12-" 是 macOS 12 以下那包（Stage 1 在網頁這層被鎖住，只留 Stage 2；
+// 見 zh-cn-to-tw-mac 的 ContentView.osTier 說明）。跟後端
+// GET /api/version_check 的 os_version 參數用同一套字串。省略時預設
+// "13+"，維持目前主要在用的那個 build 行為不變。
+const DESKTOP_OS_TIER = desktopParams.get("osTier") ?? "13+";
+const STAGE1_LOCKED = DESKTOP_MODE && DESKTOP_OS_TIER === "12-";
 
 // 在真的要開始 Stage 1/2 工作之前檢查有沒有被要求強制更新。只有桌面版
 // 會檢查——瀏覽器版沒有「App 版本」這個概念，也沒有對應的 DMG 更新
@@ -44,7 +51,8 @@ async function checkVersionOrBlock() {
   let data;
   try {
     const res = await fetch(
-      `${API_BASE}/api/version_check?os=macos&major=${DESKTOP_APP_MAJOR}&minor=${DESKTOP_APP_MINOR}`
+      `${API_BASE}/api/version_check?os=macos&os_version=${encodeURIComponent(DESKTOP_OS_TIER)}` +
+        `&major=${DESKTOP_APP_MAJOR}&minor=${DESKTOP_APP_MINOR}`
     );
     data = await res.json();
   } catch (e) {
@@ -390,7 +398,10 @@ async function checkAuthStatus() {
         setPageLocked(false);
         if (!appDataLoaded) {
           appDataLoaded = true;
-          loadOptions();
+          // loadOptions() 抓的是 Stage 1 專屬的 model/批次頁數/重試次數/
+          // DPI 選項——12- 那包 Stage 1 整塊永久鎖住不會顯示，這通 API
+          // 打了也沒地方用，省下來。
+          if (!STAGE1_LOCKED) loadOptions();
           loadReviewOptions();
           loadUsage();
           loadMyProjects();
@@ -553,6 +564,22 @@ function filenameFromContentDisposition(header, fallback) {
   return plainMatch ? plainMatch[1] : fallback;
 }
 
+// blob 轉純 base64（不帶 data: 前綴），給 legacyDownload channel 用——
+// FileReader.readAsDataURL 的結果是 "data:<mime>;base64,<data>" 這個
+// 格式，只要逗號後面那一段。
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      const commaIndex = result.indexOf(",");
+      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 // 下載端點需要帶登入憑證，不能像以前那樣直接用 <a href> 導覽（那樣
 // 沒辦法附加 Authorization header）——改成用 fetch 把檔案內容抓成
 // blob，再組一個暫時的下載連結，檔名從後端回傳的 Content-Disposition
@@ -568,6 +595,20 @@ async function downloadViaAuthedFetch(url, fallbackFilename) {
     res.headers.get("Content-Disposition"),
     fallbackFilename
   );
+
+  // 12- 那包桌面殼的 WKWebView 部署目標壓到 10.15，沒有 WKDownload
+  // （要 macOS 11.3+，見 zh-cn-to-tw-mac 的 WebView.swift 說明）——下面
+  // 這條「blob: URL + <a download> 模擬點擊」的路在那包完全沒有東西
+  // 接手，點了不會有任何反應。改成把整份檔案內容轉成 base64，直接
+  // postMessage 給殼的 legacyDownload channel，殼收到後自己解碼寫進
+  // 下載資料夾（見 WebView.swift 的 handleLegacyDownload）。13+ 桌面殼
+  // 跟純瀏覽器都沒有這個 channel，走下面原本那條路，行為不變。
+  if (DESKTOP_OS_TIER === "12-" && window.webkit?.messageHandlers?.legacyDownload) {
+    const base64 = await blobToBase64(blob);
+    window.webkit.messageHandlers.legacyDownload.postMessage({ filename, base64 });
+    return;
+  }
+
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;
@@ -668,6 +709,21 @@ let reviewPollTimer = null;
 let renderedReviewLogCount = 0;
 
 const stage1FormGroup = document.getElementById("stage1-form-group");
+
+// macOS 12- 那包桌面殼：Stage 1 需要本機 OCR 服務，但那包的部署目標壓
+// 到 10.15，跟這個 App 的其他限制無關——單純是設計決定只讓那包做
+// Stage 2（見 zh-cn-to-tw-mac README「版本分流」）。整個 Stage 1 區域
+// 這裡什麼都不畫，只留一行文字，不是把表單欄位個別鎖住——鎖住表單
+// 欄位會讓使用者以為「暫時不能用、之後會解鎖」，但這是這包 build
+// 永久性的限制，不會因為使用者做了什麼而改變。
+const stage1Title = document.getElementById("stage1-title");
+const stage1LockedMessage = document.getElementById("stage1-locked-message");
+if (STAGE1_LOCKED) {
+  stage1Title.hidden = true;
+  stage1FormGroup.hidden = true;
+  stage1LockedMessage.hidden = false;
+}
+
 const modelSelect = document.getElementById("model-select");
 const modelHelp = document.getElementById("model-help");
 const batchSelect = document.getElementById("batch-select");
@@ -680,6 +736,11 @@ const usageList = document.getElementById("usage-list");
 
 let pollTimer = null;
 let renderedLogCount = 0;
+// 本機 OCR 服務（zh-cn-to-tw-ocr-service）自己的 log（例如封面偵測
+// 結果）是獨立的來源、獨立的計數——跟 renderedLogCount 分開，不能共用：
+// renderedLogCount 專門追蹤「後端 job.logs 陣列已經畫到第幾筆」，本機
+// OCR 這邊如果摻進同一個計數，會讓後端接手後自己的 log 少畫幾筆。
+let renderedLocalOcrLogCount = 0;
 let modelDescriptions = {};
 
 function validateBoundedInput(input, fieldLabel) {
@@ -869,6 +930,7 @@ submitBtn.addEventListener("click", async () => {
   statusBox.hidden = false;
   logList.innerHTML = "";
   renderedLogCount = 0;
+  renderedLocalOcrLogCount = 0;
   downloadBtn.disabled = true;
   startReviewBtn.disabled = true;
   currentJobId = null;
@@ -969,9 +1031,33 @@ submitBtn.addEventListener("click", async () => {
 // 逐頁 OCR 在它自己的背景執行緒跑，這裡輪詢 /ocr/pdf/status/<job_id> 拿
 // 進度——跟下面 pollJob() 對 Render 後端 job 的輪詢是同一種模式，只是這支
 // 是本機服務、沒有 authedFetch 需要的登入 token，改帶 X-OCR-Token。
+// 本機 OCR 服務現在會把 log（例如封面偵測結果）逐行累積進 job 狀態
+// （見 zh-cn-to-tw-ocr-service 的 app.py），不是只在整個 job 做完那一刻
+// 才一次塞給你——這裡跟著逐行往下加進同一個 #log-list，不要整段蓋掉，
+// 使用者才看得到處理過程中實際發生了什麼，不是只看到一句會被覆寫掉的
+// 狀態文字。純字串陣列，跟後端 job.logs 的 {message, level} 物件格式
+// 不一樣，也是完全獨立的來源，用自己的 renderedLocalOcrLogCount 計數，
+// 不動 renderNewLogs 那組（見該變數宣告處的說明）。
+function renderNewLocalOcrLogs(logs) {
+  if (!logs) return;
+  const shouldStickToBottom = isNearBottom(logList);
+  for (let i = renderedLocalOcrLogCount; i < logs.length; i++) {
+    const li = document.createElement("li");
+    li.textContent = logs[i];
+    logList.appendChild(li);
+  }
+  renderedLocalOcrLogCount = logs.length;
+  if (shouldStickToBottom) {
+    logList.scrollTop = logList.scrollHeight;
+  }
+}
+
 function pollLocalOcrJob(jobId) {
   return new Promise((resolve, reject) => {
-    const timer = setInterval(async () => {
+    // 先立刻查一次，理由跟 pollJob 一樣（見那邊的說明）——本機 OCR
+    // 服務剛拉起來多半還在 loading_model，不會像封面偵測那樣瞬間結束，
+    // 但一樣沒理由讓使用者送出後乾等 5 秒才看到第一個「準備中」訊息。
+    const tick = async () => {
       let res, job;
       try {
         // 每一輪都重新解析 base（而不是沿用開始時算好的）——服務中途重啟
@@ -984,6 +1070,8 @@ function pollLocalOcrJob(jobId) {
         // 網路暫時性錯誤，下一輪再試，不要整個停掉（跟 pollJob 一致的處理方式）
         return;
       }
+
+      renderNewLocalOcrLogs(job.logs);
 
       if (!res.ok || job.status === "failed") {
         clearInterval(timer);
@@ -1010,7 +1098,12 @@ function pollLocalOcrJob(jobId) {
           ? `本機 OCR 辨識中（第 ${job.current_page}/${job.total_pages} 頁）`
           : "本機 OCR 辨識中";
       }
-    }, 5000);
+    };
+    // 先排好 interval 再手動觸發第一次——原因跟 pollJob 一樣（見那邊
+    // 的說明）：tick() 裡 done/failed 會 clearInterval(timer)，順序反過來
+    // 的話第一拍如果剛好就該收尾，timer 還沒賦值，清不掉真正的 interval。
+    const timer = setInterval(tick, 5000);
+    tick();
   });
 }
 
@@ -1068,7 +1161,14 @@ function showInterruptedDialog({ hasPartial, onRetry, onFinalize }) {
 }
 
 function pollJob(jobId) {
-  pollTimer = setInterval(async () => {
+  // 先立刻查一次，不要等第一個輪詢間隔（5 秒）過completed才有第一筆
+  // 畫面更新——封面偵測這種很快就結束的步驟（純本機影像統計，通常
+  // 不到 1 秒），如果從送出到第一次輪詢中間空了 5 秒，使用者送出後
+  // 那幾秒會完全看不到任何反應，容易誤以為沒送出去或卡住了（實測
+  // 抓到這個情況）。輪詢間隔本身維持 5 秒不變——那是刻意拉長的（見
+  // 8a09d65：拿掉全域鎖後頻繁輪詢不再有鎖死風險，但降低頻率仍能省
+  // Neon 連線量），只補第一拍，不是把整個間隔都縮短。
+  const tick = async () => {
     // 已經有一次重新登入在等使用者完成，這一輪先跳過，不要每 1.5 秒
     // 就再打一次注定又是 401 的請求（見 requestReauthOnce 的說明）
     if (reauthInFlight) return;
@@ -1143,7 +1243,14 @@ function pollJob(jobId) {
         },
       });
     }
-  }, 5000);
+  };
+  // 先排好 interval 再手動觸發第一次——tick() 裡好幾個分支會
+  // clearInterval(pollTimer)（工作已經 done/failed/查無此工作），如果
+  // 先呼叫 tick() 再指定 pollTimer，第一次立刻執行那一拍如果剛好就
+  // 該收尾，pollTimer 這時候還是舊值（或 undefined），clearInterval
+  // 會清錯目標，真正的新 interval 反而永遠停不掉。
+  pollTimer = setInterval(tick, 5000);
+  tick();
 }
 
 downloadBtn.addEventListener("click", async () => {
@@ -1341,6 +1448,7 @@ function resetJobAndReviewState() {
   setProcessing(false);
   stage2Unlocked = false;
   renderedLogCount = 0;
+  renderedLocalOcrLogCount = 0;
   renderedReviewLogCount = 0;
   statusBox.hidden = true;
   logList.innerHTML = "";
@@ -1402,7 +1510,8 @@ async function runReview() {
 }
 
 function pollReview(reviewId) {
-  reviewPollTimer = setInterval(async () => {
+  // 先立刻查一次，理由跟 pollJob 一樣（見那邊的說明）。
+  const tick = async () => {
     if (reauthInFlight) return;
     let res, review;
     try {
@@ -1471,7 +1580,13 @@ function pollReview(reviewId) {
         },
       });
     }
-  }, 5000);
+  };
+  // 先排好 interval 再手動觸發第一次——原因跟 pollJob 一樣（見那邊的
+  // 說明）：tick() 裡好幾個分支會 clearInterval(reviewPollTimer)，順序
+  // 反過來的話第一拍如果剛好就該收尾，reviewPollTimer 還是舊值，清不掉
+  // 真正的新 interval。
+  reviewPollTimer = setInterval(tick, 5000);
+  tick();
 }
 
 function renderNewReviewLogs(logs) {

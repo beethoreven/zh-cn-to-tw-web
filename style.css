@@ -741,6 +741,15 @@ button:disabled {
   opacity: 0.5;
 }
 
+/* 同一個 [hidden] 特異度打平的坑（見上面 .field[hidden] 的說明）：
+   #stage1-form-group 自己的 ID 規則跟瀏覽器內建的 [hidden] 規則特異度
+   打平，我們的規則會贏，導致 12- 那包用 JS 設 hidden=true 後畫面上
+   還是看得到整個表單（實測撞過）。這條規則特異度更高，確保 hidden
+   屬性真的能蓋掉上面的 display: flex。 */
+#stage1-form-group[hidden] {
+  display: none;
+}
+
 .scroll-hint {
   position: absolute;
   bottom: 4px;
