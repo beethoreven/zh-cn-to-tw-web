@@ -68,30 +68,6 @@
                 </div>
 
                 <div class="field">
-                  <label for="model-select">Model</label>
-                  <select id="model-select"></select>
-                  <p class="field-help" id="model-help"></p>
-                </div>
-
-                <div class="field">
-                  <label for="batch-select">批次頁數</label>
-                  <select id="batch-select">
-                    <option value="5">5 頁</option>
-                    <option value="10">10 頁</option>
-                    <option value="20">20 頁</option>
-                    <option value="30">30 頁</option>
-                    <option value="whole">整本丟（不分批）</option>
-                  </select>
-                  <p class="field-help" id="batch-help"></p>
-                </div>
-
-                <div class="field">
-                  <label for="retry-input">API 失敗重試次數</label>
-                  <input type="number" id="retry-input" />
-                  <p class="field-help" id="retry-help"></p>
-                </div>
-
-                <div class="field">
                   <label for="dpi-input">PDF 轉圖片解析度（DPI）</label>
                   <input type="number" id="dpi-input" />
                   <p class="field-help" id="dpi-help"></p>
@@ -115,12 +91,53 @@
                 </div>
 
                 <div class="field">
+                  <label class="switch-row" for="llm-refine-toggle">
+                    <span>進行LLM潤飾</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="llm-refine-toggle" />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model會是直接進行校對時套用的選項。
+                  </p>
+                </div>
+
+                <div class="field" id="model-field">
+                  <label for="model-select">Model</label>
+                  <select id="model-select"></select>
+                  <p class="field-help" id="model-help"></p>
+                </div>
+
+                <div class="field" id="batch-field">
+                  <label for="batch-select">批次頁數</label>
+                  <select id="batch-select">
+                    <option value="5">5 頁</option>
+                    <option value="10">10 頁</option>
+                    <option value="20">20 頁</option>
+                    <option value="30">30 頁</option>
+                    <option value="whole">整本丟（不分批）</option>
+                  </select>
+                  <p class="field-help" id="batch-help"></p>
+                </div>
+
+                <div class="field" id="retry-field">
+                  <label for="retry-input">API 失敗重試次數</label>
+                  <input type="number" id="retry-input" />
+                  <p class="field-help" id="retry-help"></p>
+                </div>
+
+                <div class="field" id="auto-review-field">
                   <label class="switch-row" for="auto-review-toggle">
                     <span>直接進行校對</span>
                     <span class="switch-with-label">
                       <span class="switch-label-text">off</span>
                       <span class="switch">
-                        <input type="checkbox" id="auto-review-toggle" checked />
+                        <input type="checkbox" id="auto-review-toggle" />
                         <span class="switch-track"></span>
                       </span>
                       <span class="switch-label-text">on</span>

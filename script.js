@@ -627,7 +627,11 @@ const logList = document.getElementById("log-list");
 const downloadBtn = document.getElementById("download-btn");
 const docxToggle = document.getElementById("docx-toggle");
 const autoReviewToggle = document.getElementById("auto-review-toggle");
+const autoReviewField = document.getElementById("auto-review-field");
+autoReviewToggle.addEventListener("change", () => updateLlmRefineDependentLock());
 const detectCoverToggle = document.getElementById("detect-cover-toggle");
+const llmRefineToggle = document.getElementById("llm-refine-toggle");
+llmRefineToggle.addEventListener("change", updateLlmRefineDependentLock);
 const startReviewBtn = document.getElementById("start-review-btn");
 
 let currentJobId = null;
@@ -726,10 +730,13 @@ if (STAGE1_LOCKED) {
 
 const modelSelect = document.getElementById("model-select");
 const modelHelp = document.getElementById("model-help");
+const modelField = document.getElementById("model-field");
 const batchSelect = document.getElementById("batch-select");
 const batchHelp = document.getElementById("batch-help");
+const batchField = document.getElementById("batch-field");
 const retryInput = document.getElementById("retry-input");
 const retryHelp = document.getElementById("retry-help");
+const retryField = document.getElementById("retry-field");
 const dpiInput = document.getElementById("dpi-input");
 const dpiHelp = document.getElementById("dpi-help");
 const usageList = document.getElementById("usage-list");
@@ -919,6 +926,7 @@ submitBtn.addEventListener("click", async () => {
   formData.append("max_retry", retryInput.value);
   formData.append("dpi", dpiInput.value);
   formData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+  formData.append("enable_llm_refine", llmRefineToggle.checked ? "true" : "false");
   formData.append("project", currentProjectId);
 
   lastStage1Model = modelSelect.value;
@@ -993,6 +1001,7 @@ submitBtn.addEventListener("click", async () => {
           model: modelSelect.value,
           batch_pages: batchSelect.value,
           max_retry: retryInput.value,
+          enable_llm_refine: llmRefineToggle.checked,
           file_name: file.name,
           project: currentProjectId,
         }),
@@ -1322,11 +1331,37 @@ function setStage1FormLocked(locked) {
     retryInput,
     dpiInput,
     detectCoverToggle,
+    llmRefineToggle,
     docxToggle,
     submitBtn,
   ].forEach(
     (el) => (el.disabled = locked)
   );
+  updateLlmRefineDependentLock();
+}
+
+// 批次頁數 / API 失敗重試次數這兩個欄位，只有「進行LLM潤飾」開著才有
+// 意義——關掉的話 Stage 1 全程不會呼叫任何 model，批次怎麼切、重試幾次
+// 都無所謂。
+//
+// Model 欄位不一樣：即使「進行LLM潤飾」關掉，只要「直接進行校對」開著，
+// Stage 1 完成後還是會自動觸發 Stage 2 校對、沿用這裡選的 model（見
+// lastStage1Model），所以 Model 只有在兩個開關都關的時候才真的沒有任何
+// 作用，這時候才鎖住；兩個開關任一個開著都要能選。
+//
+// 這個鎖定跟 setStage1FormLocked 的整體鎖定（跑中/未選案）是疊加關係，
+// 不是互斥——整體鎖已經鎖住時，這裡不需要、也不會把它解開。
+function updateLlmRefineDependentLock() {
+  const refineOff = !llmRefineToggle.checked;
+  const autoReviewOff = !autoReviewToggle.checked;
+  const baseLocked = stage1FormGroup.classList.contains("locked");
+
+  const modelLocked = refineOff && autoReviewOff;
+  modelField.classList.toggle("locked", modelLocked);
+  modelSelect.disabled = baseLocked || modelLocked;
+
+  [batchField, retryField].forEach((el) => el.classList.toggle("locked", refineOff));
+  [batchSelect, retryInput].forEach((el) => (el.disabled = baseLocked || refineOff));
 }
 
 function setStage2Locked(locked) {

@@ -741,6 +741,15 @@ button:disabled {
   opacity: 0.5;
 }
 
+/* 「進行LLM潤飾」關掉時，個別鎖住 Model / 批次頁數 / API 失敗重試次數 /
+   直接進行校對這幾個欄位——跟 #stage1-form-group.locked（跑中/未選案）
+   是疊加關係，不是取代它，所以做成獨立的 .field.locked 而不是共用同一個
+   class。 */
+.field.locked {
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
 /* 同一個 [hidden] 特異度打平的坑（見上面 .field[hidden] 的說明）：
    #stage1-form-group 自己的 ID 規則跟瀏覽器內建的 [hidden] 規則特異度
    打平，我們的規則會贏，導致 12- 那包用 JS 設 hidden=true 後畫面上
