@@ -133,9 +133,17 @@
 
     <section>
       <h2>Windows</h2>
-      <p class="empty-note">尚未推出</p>
-      <!-- Windows 版出來後，比照 Mac 的 .version-block 結構加版本號
-           小標跟下載選項，不要另外設計一套。 -->
+      <div class="version-block">
+        <p class="version-label">1.2</p>
+        <div class="tier">
+          <span>Windows 10（1607 以上）／ Windows 11，64 位元</span>
+          <a href="https://github.com/beethoreven/zh-cn-to-tw-windows/releases/download/v1.2/ZhCnToTw-Setup-1.2.exe">下載</a>
+        </div>
+      </div>
+      <!-- Windows 目前只有一個通用版本（不像 Mac 分 13+/12- 兩個分流），
+           不用 .tier-row，直接一個 .tier 放單一下載選項就好。之後出
+           新版本，比照 Mac 的做法在這個 section 裡、上面這個
+           .version-block 之前再插一個新的 .version-block（新版在前）。 -->
     </section>
   </main>
 </body>
