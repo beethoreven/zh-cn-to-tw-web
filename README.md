@@ -57,11 +57,20 @@ OCR 階段結束（不管成功失敗）都在 `finally` 裡請桌面殼把服�
 
 `force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。純瀏覽器開啟（沒有 `desktop=1`）完全不會觸發這個檢查，瀏覽器版沒有「App 版本」這個概念。
 
-網址上還會多帶一個 `osTier`（`"13+"` 或 `"12-"`，省略當 `"13+"`）——桌面殼分成兩個獨立版控的 build，`12-` 那包（macOS 12 以下、部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 用不到，這個值決定兩件事：
+網址上還會多帶一個 `osTier`（`"11+"` 或 `"10.15"`，省略當 `"11+"`）——桌面殼分成兩個獨立版控的 build，`10.15` 那包（部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 改用 Apple 原生 Vision framework 做 OCR，不透過 `zh-cn-to-tw-ocr-service`。這個值決定：
 
-- **Stage 1 UI 是否鎖住**：`osTier === "12-"` 時，`#stage1-title`/`#stage1-form-group` 整塊隱藏，只顯示 `#stage1-locked-message` 這一行「Stage 1功能只支援Mac OS 13以上。」——不是把表單欄位個別鎖住，因為這不是「暫時不能用」而是這包 build 永久性的限制。
 - **`checkVersionOrBlock()` 打 `version_check` 時帶哪個分流**：`os_version` 查詢參數直接帶這個值，後端 `app_versions` 表按 `(os, os_version)` 分開存兩包各自的門檻（見 `zh-cn-to-tw-backend` README「版本檢查」）。
-- **下載走哪條路**：`downloadViaAuthedFetch()` 平常用 `fetch` 拿 blob、組一個 `blob:` URL 模擬點擊觸發下載——這條路靠 `WKDownload`，`12-` 那包的 WKWebView 部署目標低於 `WKDownload` 要求的 macOS 11.3，完全沒有東西接手。`osTier === "12-"` 時改把整份檔案內容轉成 base64，直接 `postMessage` 給殼的 `legacyDownload` channel，由殼自己解碼寫進下載資料夾（見 `zh-cn-to-tw-mac` 的 `WebView.swift`）。
+- **本機 OCR 走哪條路**：`11+` 走現有的 HTTP 輪詢（`ensureDesktopOcrReady()`/`pollLocalOcrJob()`，對本機的 `zh-cn-to-tw-ocr-service`），`osTier === "10.15"` 改走 `visionOcr` message channel（見下方「10.15 分流的本機 OCR」）。
+- **下載走哪條路**：`downloadViaAuthedFetch()` 平常用 `fetch` 拿 blob、組一個 `blob:` URL 模擬點擊觸發下載——這條路靠 `WKDownload`，`10.15` 那包的 WKWebView 部署目標低於 `WKDownload` 要求的 macOS 11.3，完全沒有東西接手。`osTier === "10.15"` 時改把整份檔案內容轉成 base64，直接 `postMessage` 給殼的 `legacyDownload` channel，由殼自己解碼寫進下載資料夾（見 `zh-cn-to-tw-mac` 的 `WebView.swift`）。
+
+### 10.15 分流的本機 OCR
+
+`11+` 分流的本機 OCR（`ensureDesktopOcrReady()` 拉起 `zh-cn-to-tw-ocr-service` subprocess，`fetch` 打它的 `/ocr/pdf/start`、輪詢 `/ocr/pdf/status/<job_id>`）在 `10.15` 分流用不了——那支 Python service 依賴的 onnxruntime 編譯二進位檔 `minos` 寫死 11.0，10.15 上跑不動（見 `zh-cn-to-tw-mac` README「版本分流」）。`10.15` 分流改用 `runVisionOcrJob(file, dpi, detectCover)`：
+
+1. 用 `FileReader.readAsDataURL` 把 PDF 讀成 base64，`postMessage` 給殼的 `visionOcr` message channel（`window.webkit.messageHandlers.visionOcr`），帶 `jobId`/`pdfBase64`/`dpi`/`detectCover`。
+2. 殼那邊用 Apple 原生 Vision framework（`VNRecognizeTextRequest`）在同一個 process 裡處理（見 `zh-cn-to-tw-mac` 的 `VisionOCRManager.swift`），沒有 subprocess，也就不需要 `ensureDesktopOcrReady()`/`releaseDesktopOcr()` 那套「用到才開、用完就關」的機制。
+3. 進度/結果透過 `evaluateJavaScript` 呼叫 `window.__visionOcrProgress(payload)` 推播回來，`payload` 的欄位形狀（`phase`/`currentPage`/`totalPages`/`logs`/`status`/`pages`/`error`）刻意跟 `zh-cn-to-tw-ocr-service` 的 job 狀態對齊，共用同一套 `renderNewLocalOcrLogs`/`statusText` 顯示邏輯。
+4. `runVisionOcrJob` resolve 出來的形狀（`{ pages }`）跟 `pollLocalOcrJob` 一致，Stage 1 送出流程裡「本機 OCR 完成後 POST 去 `/api/jobs/from-ocr-text`」那段程式碼兩條路完全共用，不用分兩套邏輯。
 
 ### 為什麼用量數字不走輪詢
 
@@ -193,11 +202,20 @@ When `zh-cn-to-tw-mac` loads the page, the URL carries `appMajor`/`appMinor` alo
 
 If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. Plain browser opens (no `desktop=1`) never trigger this check at all — the browser build has no concept of an "app version."
 
-The URL also carries `osTier` (`"13+"` or `"12-"`, defaulting to `"13+"` if absent) — the desktop shell now ships as two independently-versioned builds, and the `12-` one (macOS 12 and below, deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") can't use Stage 1. This value drives three things:
+The URL also carries `osTier` (`"11+"` or `"10.15"`, defaulting to `"11+"` if absent) — the desktop shell ships as two independently-versioned builds, and the `10.15` one (deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") does Stage 1 OCR natively via Apple's Vision framework instead of `zh-cn-to-tw-ocr-service`. This value drives:
 
-- **Whether the Stage 1 UI is locked**: when `osTier === "12-"`, `#stage1-title`/`#stage1-form-group` are hidden entirely, leaving only `#stage1-locked-message` — "Stage 1功能只支援Mac OS 13以上。" Not a per-field lock, since this isn't "temporarily unavailable" but a permanent limitation of that build.
 - **Which tier `checkVersionOrBlock()` queries**: passed straight through as the `os_version` query parameter — the backend's `app_versions` table keys its thresholds by `(os, os_version)`, one row per tier (see `zh-cn-to-tw-backend`'s README, "Version Check").
-- **Which download path is used**: `downloadViaAuthedFetch()` normally fetches the file as a blob and simulates a click on a `blob:` URL — that path relies on `WKDownload`, which needs macOS 11.3+; the `12-` build's WKWebView sits below that floor, so nothing picks up the navigation. When `osTier === "12-"`, the file content is base64-encoded and `postMessage`d to the shell's `legacyDownload` channel instead, which decodes it and writes it to the Downloads folder natively (see `WebView.swift` in `zh-cn-to-tw-mac`).
+- **Which local-OCR path is used**: `11+` uses the existing HTTP polling path (`ensureDesktopOcrReady()`/`pollLocalOcrJob()`, talking to the local `zh-cn-to-tw-ocr-service`); `osTier === "10.15"` uses the `visionOcr` message channel instead (see "Local OCR on the 10.15 tier" below).
+- **Which download path is used**: `downloadViaAuthedFetch()` normally fetches the file as a blob and simulates a click on a `blob:` URL — that path relies on `WKDownload`, which needs macOS 11.3+; the `10.15` build's WKWebView sits below that floor, so nothing picks up the navigation. When `osTier === "10.15"`, the file content is base64-encoded and `postMessage`d to the shell's `legacyDownload` channel instead, which decodes it and writes it to the Downloads folder natively (see `WebView.swift` in `zh-cn-to-tw-mac`).
+
+### Local OCR on the 10.15 Tier
+
+The `11+` tier's local-OCR path (`ensureDesktopOcrReady()` launches the `zh-cn-to-tw-ocr-service` subprocess, `fetch`es its `/ocr/pdf/start`, polls `/ocr/pdf/status/<job_id>`) doesn't work on the `10.15` tier — that Python service's onnxruntime dependency has its `minos` hardcoded to 11.0 in the compiled binary, so it can't run on 10.15 (see `zh-cn-to-tw-mac`'s README, "Version Tiers"). The `10.15` tier uses `runVisionOcrJob(file, dpi, detectCover)` instead:
+
+1. Reads the PDF as base64 via `FileReader.readAsDataURL`, then `postMessage`s it to the shell's `visionOcr` message channel (`window.webkit.messageHandlers.visionOcr`), carrying `jobId`/`pdfBase64`/`dpi`/`detectCover`.
+2. The shell processes it natively, in-process, via Apple's Vision framework (`VNRecognizeTextRequest`) — see `VisionOCRManager.swift` in `zh-cn-to-tw-mac`. No subprocess means no need for the `ensureDesktopOcrReady()`/`releaseDesktopOcr()` "launch on demand, release when done" dance.
+3. Progress and results come back via `evaluateJavaScript` calling `window.__visionOcrProgress(payload)` — `payload`'s shape (`phase`/`currentPage`/`totalPages`/`logs`/`status`/`pages`/`error`) is deliberately aligned with `zh-cn-to-tw-ocr-service`'s job state, so both paths share the same `renderNewLocalOcrLogs`/`statusText` display logic.
+4. What `runVisionOcrJob` resolves to (`{ pages }`) matches `pollLocalOcrJob`'s shape, so the "POST the OCR'd pages to `/api/jobs/from-ocr-text`" step of the Stage 1 submit flow is shared code between both paths, not two separate implementations.
 
 ### Why Usage Numbers Aren't Polled
 

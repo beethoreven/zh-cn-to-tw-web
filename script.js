@@ -32,13 +32,14 @@ const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
 // GET /api/version_check 比較邏輯一致。
 const DESKTOP_APP_MAJOR = Number(desktopParams.get("appMajor") ?? "0");
 const DESKTOP_APP_MINOR = Number(desktopParams.get("appMinor") ?? "0");
-// 這包桌面殼屬於哪一個版控分流："13+" 是完整版（Stage 1 也能用），
-// "12-" 是 macOS 12 以下那包（Stage 1 在網頁這層被鎖住，只留 Stage 2；
-// 見 zh-cn-to-tw-mac 的 ContentView.osTier 說明）。跟後端
-// GET /api/version_check 的 os_version 參數用同一套字串。省略時預設
-// "13+"，維持目前主要在用的那個 build 行為不變。
-const DESKTOP_OS_TIER = desktopParams.get("osTier") ?? "13+";
-const STAGE1_LOCKED = DESKTOP_MODE && DESKTOP_OS_TIER === "12-";
+// 這包桌面殼屬於哪一個版控分流："11+" 是主線版（部署目標 macOS 11.0，
+// Stage 1 用本機的 zh-cn-to-tw-ocr-service），"10.15" 是另一個部署目標
+// 壓到 10.15 的分流（Stage 1 改用 Apple 原生 Vision framework 做 OCR，
+// 不透過 zh-cn-to-tw-ocr-service——見 zh-cn-to-tw-mac 的
+// ContentView.osTier 說明）。跟後端 GET /api/version_check 的
+// os_version 參數用同一套字串。省略時預設 "11+"，維持目前主要在用的
+// 那個 build 行為不變。
+const DESKTOP_OS_TIER = desktopParams.get("osTier") ?? "11+";
 
 // 在真的要開始 Stage 1/2 工作之前檢查有沒有被要求強制更新。只有桌面版
 // 會檢查——瀏覽器版沒有「App 版本」這個概念，也沒有對應的 DMG 更新
@@ -110,6 +111,52 @@ async function ensureDesktopOcrReady(timeoutMs = 30000) {
 function releaseDesktopOcr() {
   if (!DESKTOP_MODE) return;
   window.webkit.messageHandlers.ocrService.postMessage({ action: "stop" });
+}
+
+// 10.15 分流的本機 OCR：不是 HTTP 輪詢（那條路依賴的
+// zh-cn-to-tw-ocr-service 在真正的 macOS 10.15 上跑不動，見
+// zh-cn-to-tw-mac 的 VisionOCRManager.swift 開頭的說明），改用
+// visionOcr message channel——把 PDF 讀成 base64 postMessage 過去，殼
+// 用 Apple 原生 Vision framework 處理，透過 evaluateJavaScript 呼叫
+// window.__visionOcrProgress(payload) 把進度/結果推回來。resolve 出來
+// 的形狀（{ pages }）刻意跟 pollLocalOcrJob 一致，呼叫端不用分兩套
+// 邏輯處理後續（送去 Render 潤飾那段完全共用）。
+function runVisionOcrJob(file, dpi, detectCover) {
+  return new Promise((resolve, reject) => {
+    const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    // 用完就拆掉，不留著——避免上一份工作的殘留 callback 在下一份工作
+    // 開始後才姍姍來遲，用 jobId 互相比對雖然也能擋掉，但拆乾淨更保險。
+    window.__visionOcrProgress = (payload) => {
+      if (payload.jobId !== jobId) return;
+      renderNewLocalOcrLogs(payload.logs);
+
+      if (payload.status === "failed") {
+        delete window.__visionOcrProgress;
+        reject(new Error(payload.error || "本機 OCR 辨識失敗"));
+        return;
+      }
+      if (payload.status === "done") {
+        delete window.__visionOcrProgress;
+        resolve({ pages: payload.pages });
+        return;
+      }
+      statusText.textContent = payload.totalPages
+        ? `本機 OCR 辨識中（第 ${payload.currentPage ?? 0}/${payload.totalPages} 頁）`
+        : "本機 OCR 準備中（讀取 PDF）";
+    };
+
+    const reader = new FileReader();
+    reader.onerror = () => {
+      delete window.__visionOcrProgress;
+      reject(new Error("讀取 PDF 檔案失敗"));
+    };
+    reader.onload = () => {
+      const base64 = String(reader.result).split(",")[1] || "";
+      window.webkit.messageHandlers.visionOcr.postMessage({ jobId, pdfBase64: base64, dpi, detectCover });
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
@@ -398,10 +445,7 @@ async function checkAuthStatus() {
         setPageLocked(false);
         if (!appDataLoaded) {
           appDataLoaded = true;
-          // loadOptions() 抓的是 Stage 1 專屬的 model/批次頁數/重試次數/
-          // DPI 選項——12- 那包 Stage 1 整塊永久鎖住不會顯示，這通 API
-          // 打了也沒地方用，省下來。
-          if (!STAGE1_LOCKED) loadOptions();
+          loadOptions();
           loadReviewOptions();
           loadUsage();
           loadMyProjects();
@@ -596,14 +640,14 @@ async function downloadViaAuthedFetch(url, fallbackFilename) {
     fallbackFilename
   );
 
-  // 12- 那包桌面殼的 WKWebView 部署目標壓到 10.15，沒有 WKDownload
+  // 10.15 那包桌面殼的 WKWebView 部署目標壓到 10.15，沒有 WKDownload
   // （要 macOS 11.3+，見 zh-cn-to-tw-mac 的 WebView.swift 說明）——下面
   // 這條「blob: URL + <a download> 模擬點擊」的路在那包完全沒有東西
   // 接手，點了不會有任何反應。改成把整份檔案內容轉成 base64，直接
   // postMessage 給殼的 legacyDownload channel，殼收到後自己解碼寫進
-  // 下載資料夾（見 WebView.swift 的 handleLegacyDownload）。13+ 桌面殼
+  // 下載資料夾（見 WebView.swift 的 handleLegacyDownload）。11+ 桌面殼
   // 跟純瀏覽器都沒有這個 channel，走下面原本那條路，行為不變。
-  if (DESKTOP_OS_TIER === "12-" && window.webkit?.messageHandlers?.legacyDownload) {
+  if (DESKTOP_OS_TIER === "10.15" && window.webkit?.messageHandlers?.legacyDownload) {
     const base64 = await blobToBase64(blob);
     window.webkit.messageHandlers.legacyDownload.postMessage({ filename, base64 });
     return;
@@ -710,23 +754,12 @@ let currentReviewId = null;
 let reviewOptionsLoaded = false;
 let reviewModelDescriptions = {};
 let reviewPollTimer = null;
+// 跟 pollGeneration（給 pollJob 用）同一個道理，見那裡的說明——這裡是
+// pollReview 自己的一份，兩邊各自輪詢各自的資源，不能共用同一個計數器。
+let reviewPollGeneration = 0;
 let renderedReviewLogCount = 0;
 
 const stage1FormGroup = document.getElementById("stage1-form-group");
-
-// macOS 12- 那包桌面殼：Stage 1 需要本機 OCR 服務，但那包的部署目標壓
-// 到 10.15，跟這個 App 的其他限制無關——單純是設計決定只讓那包做
-// Stage 2（見 zh-cn-to-tw-mac README「版本分流」）。整個 Stage 1 區域
-// 這裡什麼都不畫，只留一行文字，不是把表單欄位個別鎖住——鎖住表單
-// 欄位會讓使用者以為「暫時不能用、之後會解鎖」，但這是這包 build
-// 永久性的限制，不會因為使用者做了什麼而改變。
-const stage1Title = document.getElementById("stage1-title");
-const stage1LockedMessage = document.getElementById("stage1-locked-message");
-if (STAGE1_LOCKED) {
-  stage1Title.hidden = true;
-  stage1FormGroup.hidden = true;
-  stage1LockedMessage.hidden = false;
-}
 
 const modelSelect = document.getElementById("model-select");
 const modelHelp = document.getElementById("model-help");
@@ -742,6 +775,15 @@ const dpiHelp = document.getElementById("dpi-help");
 const usageList = document.getElementById("usage-list");
 
 let pollTimer = null;
+// pollJob() 每次被呼叫（例如中斷後使用者按「重試」）都代表新的一輪
+// 輪詢，這個計數器就是那一輪的代號。tick() 是 async，await 那段完全
+// 可能因為網路變慢（例如 backend 剛好在 deploy）而拖到「這一輪」早就
+// 被更早 clearInterval、換成新一輪之後才 resolve——這種姍姍來遲的舊
+// callback 不能再去動任何畫面狀態，不然會把新一輪已經正確的畫面蓋掉
+// （跟 zh-cn-to-tw-mac 的 OCRServiceManager 用 `self.process === process`
+// 擋掉舊 generation 的 callback 是同一類問題，見 known-issue-check 第 2
+// 條，只是這裡的「資源」是輪詢本身而不是 subprocess）。
+let pollGeneration = 0;
 let renderedLogCount = 0;
 // 本機 OCR 服務（zh-cn-to-tw-ocr-service）自己的 log（例如封面偵測
 // 結果）是獨立的來源、獨立的計數——跟 renderedLogCount 分開，不能共用：
@@ -960,36 +1002,44 @@ submitBtn.addEventListener("click", async () => {
   try {
     let jobId;
     if (DESKTOP_MODE) {
-      statusText.textContent = "啟動本機 OCR 服務";
-      // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用（見
-      // ensureDesktopOcrReady 的說明）。不管後面成功還是失敗，finally
-      // 都會把它關掉，記憶體不會一直佔著。
       let pages;
-      try {
-        const ocrBase = await ensureDesktopOcrReady();
+      if (DESKTOP_OS_TIER === "10.15") {
+        // Vision framework 在同一個 process 裡跑，沒有 subprocess 可以
+        // 啟動/關閉，不需要 ensureDesktopOcrReady/releaseDesktopOcr
+        // 那套「用到才開、用完就關」的機制（見 runVisionOcrJob 的說明）。
+        statusText.textContent = "本機 OCR 準備中（讀取 PDF）";
+        pages = (await runVisionOcrJob(file, Number(dpiInput.value), detectCoverToggle.checked)).pages;
+      } else {
+        statusText.textContent = "啟動本機 OCR 服務";
+        // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用（見
+        // ensureDesktopOcrReady 的說明）。不管後面成功還是失敗，finally
+        // 都會把它關掉，記憶體不會一直佔著。
+        try {
+          const ocrBase = await ensureDesktopOcrReady();
 
-        statusText.textContent = "本機 OCR 辨識中";
-        const ocrFormData = new FormData();
-        ocrFormData.append("file", file);
-        ocrFormData.append("dpi", dpiInput.value);
-        ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+          statusText.textContent = "本機 OCR 辨識中";
+          const ocrFormData = new FormData();
+          ocrFormData.append("file", file);
+          ocrFormData.append("dpi", dpiInput.value);
+          ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
 
-        const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
-          method: "POST",
-          headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
-          body: ocrFormData,
-        });
-        if (!startRes.ok) {
-          const err = await startRes.json();
-          throw new Error(err.error || "本機 OCR 辨識失敗");
+          const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
+            method: "POST",
+            headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+            body: ocrFormData,
+          });
+          if (!startRes.ok) {
+            const err = await startRes.json();
+            throw new Error(err.error || "本機 OCR 辨識失敗");
+          }
+          const { job_id: ocrJobId } = await startRes.json();
+          ({ pages } = await pollLocalOcrJob(ocrJobId));
+        } finally {
+          // OCR 這一步已經結束（成功或失敗都一樣），結果也已經在 pages 這個
+          // 變數裡了，服務沒有存在的必要，關掉把記憶體還回去。後面把文字送去
+          // Render 潤飾那段完全不需要它。
+          releaseDesktopOcr();
         }
-        const { job_id: ocrJobId } = await startRes.json();
-        ({ pages } = await pollLocalOcrJob(ocrJobId));
-      } finally {
-        // OCR 這一步已經結束（成功或失敗都一樣），結果也已經在 pages 這個
-        // 變數裡了，服務沒有存在的必要，關掉把記憶體還回去。後面把文字送去
-        // Render 潤飾那段完全不需要它。
-        releaseDesktopOcr();
       }
 
       statusText.textContent = "上傳中";
@@ -1170,6 +1220,7 @@ function showInterruptedDialog({ hasPartial, onRetry, onFinalize }) {
 }
 
 function pollJob(jobId) {
+  const myGeneration = ++pollGeneration;
   // 先立刻查一次，不要等第一個輪詢間隔（5 秒）過completed才有第一筆
   // 畫面更新——封面偵測這種很快就結束的步驟（純本機影像統計，通常
   // 不到 1 秒），如果從送出到第一次輪詢中間空了 5 秒，使用者送出後
@@ -1189,6 +1240,11 @@ function pollJob(jobId) {
       // 網路暫時性錯誤，下一輪再試，不要整個停掉
       return;
     }
+
+    // 這次 fetch 在等待期間，如果使用者已經觸發了新的一輪輪詢（例如
+    // 中斷後按了「重試」），這個回應就是姍姍來遲的舊 generation，
+    // 不能再動任何畫面狀態——見 pollGeneration 宣告處的說明。
+    if (myGeneration !== pollGeneration) return;
 
     if (!res.ok) {
       // job 查不到了（例如伺服器重啟過，記憶體內的 job 狀態沒了），
@@ -1413,6 +1469,10 @@ async function startAutoReview() {
     reviewModelSelect.value = lastStage1Model;
     reviewModelHelp.textContent = reviewModelDescriptions[lastStage1Model] || "";
   }
+  // 「直接進行校對」自動觸發時，Stage 2 的輸出格式跟著 Stage 1 這次用的
+  // 格式走，不用使用者自己再切一次——跟上面沿用 lastStage1Model 是同一個
+  // 「自動接續、不要求使用者重複設定」的邏輯。
+  reviewDocxToggle.checked = docxToggle.checked;
   stage2Unlocked = true;
   refreshLockStates();
   reviewBox.scrollIntoView({ behavior: "smooth" });
@@ -1545,6 +1605,7 @@ async function runReview() {
 }
 
 function pollReview(reviewId) {
+  const myGeneration = ++reviewPollGeneration;
   // 先立刻查一次，理由跟 pollJob 一樣（見那邊的說明）。
   const tick = async () => {
     if (reauthInFlight) return;
@@ -1555,6 +1616,14 @@ function pollReview(reviewId) {
     } catch (e) {
       return;
     }
+
+    // 這次 fetch 在等待期間，如果使用者已經觸發了新的一輪輪詢（例如
+    // 中斷後按了「重試」），這個回應就是姍姍來遲的舊 generation，不能
+    // 再去 renderFindings 把使用者在新一輪畫面上已經勾選的項目蓋掉——
+    // 見 reviewPollGeneration 宣告處、pollJob 的 pollGeneration 的說明。
+    // 這正是實測抓到的案例：Stage 2 因為 backend 剛好在 deploy 被中斷，
+    // 使用者按重試後，勾選的建議項目在幾秒後莫名其妙被取消掉。
+    if (myGeneration !== reviewPollGeneration) return;
 
     if (!res.ok) {
       clearInterval(reviewPollTimer);
