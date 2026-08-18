@@ -93,6 +93,17 @@
       color: #9a8a54;
       font-size: 0.9rem;
     }
+    /* white-space: pre-line 保留 .txt 檔裡的換行——跟主站
+       zh-cn-to-tw-web 的 .notice-text（顯示「阿舍老師的叮嚀」那塊）
+       同一個規則，這裡是同名但獨立的一份，因為這個頁面是完全獨立的
+       orphan branch，沒有共用 style.css。 */
+    .notice-text {
+      margin: 0;
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: #4a3f1f;
+      white-space: pre-line;
+    }
   </style>
 </head>
 <body>
@@ -134,18 +145,41 @@
 
     <section>
       <h2>Windows</h2>
+      <!-- 刻意只留目前這一個版本，不像 Mac 保留歷史版本區塊——Windows
+           版還沒有版本追蹤/強制更新機制（見 zh-cn-to-tw-windows
+           README「已知限制」），舊安裝檔留著下載沒有實際用途，只留
+           最新版最單純。之後出新版本，直接把這個 .version-block 換成
+           新版本號 + 新連結即可，不用像 Mac 那樣往下新增一個區塊。 -->
       <div class="version-block">
-        <p class="version-label">1.2</p>
+        <p class="version-label">1.3</p>
         <div class="tier">
           <span>Windows 10（1607 以上）／ Windows 11，64 位元</span>
-          <a href="https://github.com/beethoreven/zh-cn-to-tw-windows/releases/download/v1.2/ZhCnToTw-Setup-1.2.exe">下載</a>
+          <a href="https://github.com/beethoreven/zh-cn-to-tw-windows/releases/download/v1.3/ZhCnToTw-Setup-1.3.exe">下載</a>
         </div>
       </div>
-      <!-- Windows 目前只有一個通用版本（不像 Mac 分 13+/12- 兩個分流），
-           不用 .tier-row，直接一個 .tier 放單一下載選項就好。之後出
-           新版本，比照 Mac 的做法在這個 section 裡、上面這個
-           .version-block 之前再插一個新的 .version-block（新版在前）。 -->
+    </section>
+
+    <section>
+      <h2>安裝說明</h2>
+      <p id="download-notice" class="notice-text">載入中...</p>
     </section>
   </main>
+
+  <script>
+    // 這個頁面是完全獨立的 orphan branch（update-page），沒有共用
+    // zh-cn-to-tw-web main 分支的 script.js/API_BASE 變數，直接寫死
+    // 正式後端網址。跟主站的 initTaNotice() 同一個模式：內容來源是
+    // zh-cn-to-tw-backend repo 根目錄的 download_notice.txt，維護者
+    // 編輯那份檔案、commit、push、部署即可更新這裡顯示的內容，不用
+    // 碰這個頁面。不要求登入——下載頁本身就是給還沒安裝 App 的人看的。
+    (function () {
+      var API_BASE = "https://zh-cn-to-tw-backend.onrender.com";
+      var el = document.getElementById("download-notice");
+      fetch(API_BASE + "/api/download_notice")
+        .then(function (res) { return res.json(); })
+        .then(function (data) { el.textContent = data.text || "（目前沒有內容）"; })
+        .catch(function () { el.textContent = "（載入失敗）"; });
+    })();
+  </script>
 </body>
 </html>
