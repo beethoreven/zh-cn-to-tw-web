@@ -90,6 +90,23 @@
                 </div>
 
                 <div class="field">
+                  <label class="switch-row" for="preprocess-toggle">
+                    <span>進行前置處理</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="preprocess-toggle" checked />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    移除頁碼與標頭，接合斷句，全形標點符號，整理上下引號。
+                  </p>
+                </div>
+
+                <div class="field">
                   <label class="switch-row" for="llm-refine-toggle">
                     <span>進行LLM潤飾</span>
                     <span class="switch-with-label">
@@ -193,6 +210,24 @@
 
               <div id="stage2-locked-group">
                 <div class="field">
+                  <label class="switch-row" for="review-preprocess-toggle">
+                    <span>進行前置處理</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="review-preprocess-toggle" disabled />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    針對 txt 檔或 docx 檔接合斷句，全形標點符號，整理上下引號。
+                    這部分會直接處理，不會詢問使用者。
+                  </p>
+                </div>
+
+                <div class="field">
                   <label for="review-model-select">Model</label>
                   <select id="review-model-select" disabled></select>
                   <p class="field-help" id="review-model-help"></p>
@@ -200,12 +235,12 @@
 
                 <div class="field">
                   <label for="review-batch-select">批次字數</label>
+                  <!-- 只留 1000/3000：開啟「進行前置處理」時 LLM 要連整理過的
+                       全文一起回傳，輸出量跟輸入量差不多，再大的批次會直接撞到
+                       模型單次輸出上限被截斷。 -->
                   <select id="review-batch-select" disabled>
                     <option value="1000">1000 字</option>
                     <option value="3000">3000 字</option>
-                    <option value="6000">6000 字</option>
-                    <option value="10000">10000 字</option>
-                    <option value="whole">全文（不分批）</option>
                   </select>
                   <p class="field-help" id="review-batch-help"></p>
                 </div>

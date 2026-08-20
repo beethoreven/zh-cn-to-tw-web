@@ -674,6 +674,8 @@ const autoReviewToggle = document.getElementById("auto-review-toggle");
 const autoReviewField = document.getElementById("auto-review-field");
 autoReviewToggle.addEventListener("change", () => updateLlmRefineDependentLock());
 const detectCoverToggle = document.getElementById("detect-cover-toggle");
+const preprocessToggle = document.getElementById("preprocess-toggle");
+preprocessToggle.addEventListener("change", updateLlmRefineDependentLock);
 const llmRefineToggle = document.getElementById("llm-refine-toggle");
 llmRefineToggle.addEventListener("change", updateLlmRefineDependentLock);
 const startReviewBtn = document.getElementById("start-review-btn");
@@ -729,6 +731,7 @@ const directUploadBtn = document.getElementById("direct-upload-btn");
 const stage2LockedGroup = document.getElementById("stage2-locked-group");
 
 const reviewBox = document.getElementById("review-box");
+const reviewPreprocessToggle = document.getElementById("review-preprocess-toggle");
 const reviewModelSelect = document.getElementById("review-model-select");
 const reviewModelHelp = document.getElementById("review-model-help");
 const reviewBatchSelect = document.getElementById("review-batch-select");
@@ -981,6 +984,7 @@ submitBtn.addEventListener("click", async () => {
   formData.append("max_retry", retryInput.value);
   formData.append("dpi", dpiInput.value);
   formData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+  formData.append("enable_preprocess", preprocessToggle.checked ? "true" : "false");
   formData.append("enable_llm_refine", llmRefineToggle.checked ? "true" : "false");
   formData.append("project", currentProjectId);
 
@@ -1064,6 +1068,7 @@ submitBtn.addEventListener("click", async () => {
           model: modelSelect.value,
           batch_pages: batchSelect.value,
           max_retry: retryInput.value,
+          enable_preprocess: preprocessToggle.checked,
           enable_llm_refine: llmRefineToggle.checked,
           file_name: file.name,
           project: currentProjectId,
@@ -1400,6 +1405,7 @@ function setStage1FormLocked(locked) {
     retryInput,
     dpiInput,
     detectCoverToggle,
+    preprocessToggle,
     llmRefineToggle,
     docxToggle,
     submitBtn,
@@ -1409,35 +1415,40 @@ function setStage1FormLocked(locked) {
   updateLlmRefineDependentLock();
 }
 
-// 批次頁數 / API 失敗重試次數這兩個欄位，只有「進行LLM潤飾」開著才有
-// 意義——關掉的話 Stage 1 全程不會呼叫任何 model，批次怎麼切、重試幾次
-// 都無所謂。
+// 批次頁數 / API 失敗重試次數這兩個欄位，只有這次真的會呼叫 LLM 才有
+// 意義。「會不會呼叫 LLM」由「進行前置處理」與「進行LLM潤飾」兩個開關
+// 共同決定——兩個都關 Stage 1 才會全程只做 OpenCC 簡轉繁，任一個開著
+// 都會送出一次呼叫，批次怎麼切、重試幾次就都有影響。
 //
-// Model 欄位不一樣：即使「進行LLM潤飾」關掉，只要「直接進行校對」開著，
+// Model 欄位再多一層：即使上面兩個都關掉，只要「直接進行校對」開著，
 // Stage 1 完成後還是會自動觸發 Stage 2 校對、沿用這裡選的 model（見
-// lastStage1Model），所以 Model 只有在兩個開關都關的時候才真的沒有任何
-// 作用，這時候才鎖住；兩個開關任一個開著都要能選。
+// lastStage1Model），所以 Model 要三個開關全關才真的沒有任何作用。
 //
 // 這個鎖定跟 setStage1FormLocked 的整體鎖定（跑中/未選案）是疊加關係，
 // 不是互斥——整體鎖已經鎖住時，這裡不需要、也不會把它解開。
 function updateLlmRefineDependentLock() {
-  const refineOff = !llmRefineToggle.checked;
+  const noLlmCall = !llmRefineToggle.checked && !preprocessToggle.checked;
   const autoReviewOff = !autoReviewToggle.checked;
   const baseLocked = stage1FormGroup.classList.contains("locked");
 
-  const modelLocked = refineOff && autoReviewOff;
+  const modelLocked = noLlmCall && autoReviewOff;
   modelField.classList.toggle("locked", modelLocked);
   modelSelect.disabled = baseLocked || modelLocked;
 
-  [batchField, retryField].forEach((el) => el.classList.toggle("locked", refineOff));
-  [batchSelect, retryInput].forEach((el) => (el.disabled = baseLocked || refineOff));
+  [batchField, retryField].forEach((el) => el.classList.toggle("locked", noLlmCall));
+  [batchSelect, retryInput].forEach((el) => (el.disabled = baseLocked || noLlmCall));
 }
 
 function setStage2Locked(locked) {
   stage2LockedGroup.classList.toggle("locked", locked);
-  [reviewModelSelect, reviewBatchSelect, reviewRetryInput, reviewDocxToggle, reviewRunBtn].forEach(
-    (el) => (el.disabled = locked)
-  );
+  [
+    reviewPreprocessToggle,
+    reviewModelSelect,
+    reviewBatchSelect,
+    reviewRetryInput,
+    reviewDocxToggle,
+    reviewRunBtn,
+  ].forEach((el) => (el.disabled = locked));
 }
 
 function setDirectUploadLocked(locked) {
@@ -1586,6 +1597,7 @@ async function runReview() {
   formData.append("model", reviewModelSelect.value);
   formData.append("batch_chars", reviewBatchSelect.value);
   formData.append("max_retry", reviewRetryInput.value);
+  formData.append("enable_preprocess", reviewPreprocessToggle.checked ? "true" : "false");
   formData.append("project", currentProjectId);
 
   setProcessing(true);
@@ -1836,6 +1848,9 @@ rerunBtn.addEventListener("click", async () => {
   if (!currentReviewId) return;
   if (!(await checkVersionOrBlock())) return;
 
+  // 刻意不帶 enable_preprocess：這裡要校對的是「已經前置處理過、又套用
+  // 完勾選建議」的文字，同一份東西不需要再整理一次。後端的 rerun 也會
+  // 強制關閉，這裡不帶只是讓前後端意圖一致。
   const formData = new FormData();
   formData.append("model", reviewModelSelect.value);
   formData.append("batch_chars", reviewBatchSelect.value);
