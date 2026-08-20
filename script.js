@@ -263,12 +263,13 @@ let adminDataLoaded = false; // 管理員介面的下拉選單資料只需要在
 let projectConfirmed = false;
 let currentProjectId = null;
 
-// 「個人專案」：沒有負責人、所有人都能選的共用專案（owner 是 null）。
-// 選到這個專案時，Claude model 選單要拿掉（後端也會擋，這裡只是
-// 視覺提示，不用重打一次 API 才知道要不要擋）。projectOwnerById 在
-// loadMyProjects() 載入下拉選單時一起建立，key/value 都是數字（跟
-// currentProjectId 型別一致），owner 是 null 就代表是個人專案。
-let projectOwnerById = new Map();
+// 「個人專案」：所有人都能選的共用專案，固定 id=1（跟後端
+// config.PERSONAL_PROJECT_ID 對齊）。刻意不用「owner 是不是 null」
+// 判斷——實測發現 DB 裡這個專案的 owner 其實不是 null（是專案擁有者
+// 自己的帳號），用 owner 判斷會整個失效；用固定 id 判斷不受 owner
+// 欄位實際存什麼值影響。選到這個專案時，Claude model 選單要拿掉
+// （後端也會擋，這裡只是視覺提示，不用重打一次 API 才知道要不要擋）。
+const PERSONAL_PROJECT_ID = 1;
 let isPersonalProject = false;
 
 // Stage 1/2 的完整 model 清單（含 Claude），從 /api/options、
@@ -404,7 +405,6 @@ function showSignedOutUI() {
   projectConfirmed = false;
   currentProjectId = null;
   isPersonalProject = false;
-  projectOwnerById = new Map();
   projectSelectEl.innerHTML = "";
   projectUsageBlockEl.hidden = true;
   refreshLockStates();
@@ -907,13 +907,11 @@ async function loadMyProjects() {
   placeholder.value = "";
   placeholder.textContent = "請選擇劇本案";
   projectSelectEl.appendChild(placeholder);
-  projectOwnerById = new Map();
   for (const project of data.projects) {
     const option = document.createElement("option");
     option.value = project.id;
     option.textContent = project.name;
     projectSelectEl.appendChild(option);
-    projectOwnerById.set(project.id, project.owner);
   }
 }
 
@@ -921,6 +919,15 @@ async function loadProjectUsage() {
   if (!currentProjectId) return;
   const res = await authedFetch(`${API_BASE}/api/usage/project/${currentProjectId}`);
   const data = await res.json();
+  // 沒檢查 res.ok 之前，後端任何錯誤（例如個人專案曾經誤擋 403 的那個
+  // bug）都會讓 data 變成 {error: "..."}，下面 renderClaudeUsageRows
+  // 對 undefined 的 data.models 直接炸例外，用量面板整個壞掉、也看不出
+  // 真正原因。改成明確顯示錯誤訊息，不要讓渲染函式自己意外炸掉。
+  if (!res.ok) {
+    projectUsageListEl.innerHTML = "";
+    showToast(data.error || "查詢本案用量失敗", "error");
+    return;
+  }
 
   const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
 
@@ -933,12 +940,18 @@ projectConfirmBtnEl.addEventListener("click", () => {
     return;
   }
   currentProjectId = Number(projectSelectEl.value);
-  isPersonalProject = projectOwnerById.get(currentProjectId) === null;
+  isPersonalProject = currentProjectId === PERSONAL_PROJECT_ID;
   applyModelRestrictionsForProject();
   projectConfirmed = true;
   refreshLockStates();
-  projectUsageBlockEl.hidden = false;
-  loadProjectUsage();
+  // 個人專案是所有人共用的選項，Claude 用量是大家一起計，顯示「本案
+  // 使用 Claude token 狀況」對個人來說沒有意義（而且個人專案本來就
+  // 不能用 Claude，這排數字永遠是空的）——整排不顯示，也不用白打一次
+  // API 去抓一定沒用的值。
+  projectUsageBlockEl.hidden = isPersonalProject;
+  if (!isPersonalProject) {
+    loadProjectUsage();
+  }
 });
 
 submitBtn.addEventListener("click", async () => {
