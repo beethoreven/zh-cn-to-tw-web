@@ -1187,13 +1187,22 @@ function pollLocalOcrJob(jobId) {
 // ===== 工作被伺服器重啟打斷時的處理 =====
 // Render 重啟（部署、平台搬機器）會讓正在跑的背景工作直接消失。後端
 // 啟動時會把這種工作標記成 interrupted（見該 repo 的 db_utils/job_store.py），
-// 前端收到這個狀態就跳這個對話窗，讓使用者自己決定要再等等看還是收尾。
+// 前端收到這個狀態就跳這個對話窗。
 //
-// 「重試」重試的是「跟後端要進度」，不是叫後端繼續做——工作真的被中斷
-// 之後不會自己接續。所以重試通常只有在「其實只是暫時連不上」的情況下
-// 有用；真的被重啟打斷的話，使用者要選「結束此階段工作」，把中斷前
-// 已經完成、而且已經付費算出來的部分收下來，不用整份重跑。
-function showInterruptedDialog({ hasPartial, onRetry, onFinalize }) {
+// 這裡原本有一顆「重試」按鈕，已經移除——它在任何情況下都不可能救回
+// 工作，留著只會誤導。原因：後端沒有任何路徑能把 interrupted 改回
+// running（只有 process 啟動時的 mark_running_as_interrupted 會寫入這個
+// 狀態，唯一出口是 finalize），而且 job_manager.get_job 是記憶體優先，
+// 所以前端能讀到 interrupted 就代表當前 process 記憶體裡沒有它、執行緒
+// 早就隨著重啟消失了。「重試」做的事只是重新輪詢一次，答案永遠是同一個
+// interrupted。真正該重試、也真的會成功的情況（網路暫時不通、Render
+// 重啟中回 502）根本不會走到這裡——那些在 tick() 的 catch 裡就被靜默
+// 自動重試掉了，畫面上完全無感。也就是說：看得到這顆按鈕的情境，跟它
+// 能生效的情境，是互斥的。
+//
+// 剩下兩個選擇都是「這份工作到此為止」，差別只在要不要把中斷前已經完成、
+// 而且已經付費算出來的部分收下來。
+function showInterruptedDialog({ hasPartial, onDownload }) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
 
@@ -1201,36 +1210,37 @@ function showInterruptedDialog({ hasPartial, onRetry, onFinalize }) {
   box.className = "modal-box";
 
   const title = document.createElement("h3");
-  title.textContent = "伺服器異常，請稍後再試";
+  title.textContent = "伺服器異常，工作已中斷";
   box.appendChild(title);
 
   const desc = document.createElement("p");
-  desc.textContent = hasPartial
-    ? "這次工作在伺服器重啟時被中斷了。你可以再試一次，或直接結束這個階段，"
-      + "保留中斷前已經完成的部分（可以下載）。"
-    : "這次工作在伺服器重啟時被中斷了，而且還沒有任何已完成的部分可以保留。";
+  desc.textContent = "由於伺服器問題，工作必須暫時中斷，請選擇放棄或下載當前進度。";
   box.appendChild(desc);
 
   const actions = document.createElement("div");
   actions.className = "modal-actions";
 
-  const retryBtn = document.createElement("button");
-  retryBtn.type = "button";
-  retryBtn.textContent = "重試";
-  retryBtn.addEventListener("click", () => {
-    overlay.remove();
-    onRetry();
-  });
-  actions.appendChild(retryBtn);
+  const abandonBtn = document.createElement("button");
+  abandonBtn.type = "button";
+  abandonBtn.textContent = "結束此階段工作";
+  abandonBtn.addEventListener("click", () => overlay.remove());
+  actions.appendChild(abandonBtn);
 
-  const finalizeBtn = document.createElement("button");
-  finalizeBtn.type = "button";
-  finalizeBtn.textContent = "結束此階段工作";
-  finalizeBtn.addEventListener("click", () => {
-    overlay.remove();
-    onFinalize();
-  });
-  actions.appendChild(finalizeBtn);
+  const downloadBtn2 = document.createElement("button");
+  downloadBtn2.type = "button";
+  downloadBtn2.textContent = "下載當前進度";
+  // 完全沒有任何已完成的批次時，這顆按下去後端只會回 409（沒有東西可以
+  // 保留），與其讓它跳一個錯誤，不如直接停用並說明
+  if (!hasPartial) {
+    downloadBtn2.disabled = true;
+    downloadBtn2.title = "這次工作還沒有任何已完成的部分可以下載";
+  } else {
+    downloadBtn2.addEventListener("click", () => {
+      overlay.remove();
+      onDownload();
+    });
+  }
+  actions.appendChild(downloadBtn2);
 
   box.appendChild(actions);
   overlay.appendChild(box);
@@ -1306,12 +1316,9 @@ function pollJob(jobId) {
       loadUsage();
       showInterruptedDialog({
         hasPartial: job.has_partial,
-        onRetry: () => {
-          setProcessing(true);
-          refreshLockStates();
-          pollJob(jobId);
-        },
-        onFinalize: async () => {
+        // 下載中斷前的進度：後端要先 finalize（把 partial_text 收成正式
+        // 結果）才有東西可以下載，接著就直接觸發下載，不用使用者再按一次
+        onDownload: async () => {
           try {
             const r = await authedFetch(`${API_BASE}/api/jobs/${jobId}/finalize`, { method: "POST" });
             if (!r.ok) throw new Error((await r.json()).error || "結束失敗");
@@ -1319,7 +1326,14 @@ function pollJob(jobId) {
             downloadBtn.disabled = false;
             startReviewBtn.disabled = false;
             statusText.textContent = "已結束（保留中斷前完成的部分）";
-            showToast("已保留中斷前完成的部分，可以下載了", "success");
+
+            const format = docxToggle.checked ? "docx" : "txt";
+            await downloadViaAuthedFetch(
+              `${API_BASE}/api/jobs/${jobId}/download?format=${format}`,
+              `download.${format}`
+            );
+            hasDownloaded = true;
+            showToast("已下載中斷前完成的部分", "success");
           } catch (e) {
             showToast(e.message, "error");
           }
@@ -1689,12 +1703,7 @@ function pollReview(reviewId) {
       loadProjectUsage();
       showInterruptedDialog({
         hasPartial: review.has_partial,
-        onRetry: () => {
-          setProcessing(true);
-          refreshLockStates();
-          pollReview(reviewId);
-        },
-        onFinalize: async () => {
+        onDownload: async () => {
           try {
             const r = await authedFetch(`${API_BASE}/api/reviews/${reviewId}/finalize`, { method: "POST" });
             if (!r.ok) throw new Error((await r.json()).error || "結束失敗");
@@ -1702,7 +1711,17 @@ function pollReview(reviewId) {
             renderFindings(refreshed.findings);
             reviewDownloadBtn.disabled = false;
             reviewStatusText.textContent = "已結束（保留中斷前完成的部分）";
-            showToast("已保留中斷前完成的建議，可以套用或下載了", "success");
+
+            // Stage 2 這裡下載的是「還沒套用任何建議」的文字——中斷發生在
+            // 校對途中，使用者根本還沒機會勾選，所以下載的就是校對前的
+            // 原文；已經算出來的建議仍然會列在畫面上，套用後可以再下載一次
+            const format = reviewDocxToggle.checked ? "docx" : "txt";
+            await downloadViaAuthedFetch(
+              `${API_BASE}/api/reviews/${reviewId}/download?format=${format}`,
+              `download.${format}`
+            );
+            hasDownloaded = true;
+            showToast("已下載中斷前的進度，已完成的建議仍可勾選套用", "success");
           } catch (e) {
             showToast(e.message, "error");
           }
