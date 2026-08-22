@@ -157,16 +157,25 @@
 
     <section>
       <h2>Windows</h2>
-      <!-- 刻意只留目前這一個版本，不像 Mac 保留歷史版本區塊——Windows
-           版還沒有版本追蹤/強制更新機制（見 zh-cn-to-tw-windows
-           README「已知限制」），舊安裝檔留著下載沒有實際用途，只留
-           最新版最單純。之後出新版本，直接把這個 .version-block 換成
-           新版本號 + 新連結即可，不用像 Mac 那樣往下新增一個區塊。 -->
+      <!-- 跟 Mac 那個 section 同一個規則（見那邊 2026-08-23 的說明）：
+           每次出新版就新增一個 .version-block（放最上面，新版在前），
+           保留舊版供人回退，分隔線靠 .version-block + .version-block
+           這個相鄰兄弟選擇器自動出現，不用改其他地方。不要改寫既有的
+           .version-block；要移除某個舊版本，只在使用者明確要求時才動
+           （例如那個版本被 force update 政策淘汰、min_version 追上
+           current version，代表它已經不該再被使用）。 -->
       <div class="version-block">
         <p class="version-label">1.5</p>
         <div class="tier">
           <span>Windows 10（1607 以上）／ Windows 11，64 位元</span>
           <a href="https://github.com/beethoreven/zh-cn-to-tw-windows/releases/download/v1.5/ZhCnToTw-Setup-1.5.exe">下載</a>
+        </div>
+      </div>
+      <div class="version-block">
+        <p class="version-label">1.4</p>
+        <div class="tier">
+          <span>Windows 10（1607 以上）／ Windows 11，64 位元</span>
+          <a href="https://github.com/beethoreven/zh-cn-to-tw-windows/releases/download/v1.4/ZhCnToTw-Setup-1.4.exe">下載</a>
         </div>
       </div>
     </section>
