@@ -775,6 +775,7 @@ const retryHelp = document.getElementById("retry-help");
 const retryField = document.getElementById("retry-field");
 const dpiInput = document.getElementById("dpi-input");
 const dpiHelp = document.getElementById("dpi-help");
+const ocrThresholdSelect = document.getElementById("ocr-threshold-select");
 const usageList = document.getElementById("usage-list");
 
 let pollTimer = null;
@@ -1039,6 +1040,7 @@ submitBtn.addEventListener("click", async () => {
           ocrFormData.append("file", file);
           ocrFormData.append("dpi", dpiInput.value);
           ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+          ocrFormData.append("box_thresh", ocrThresholdSelect.value);
 
           const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
             method: "POST",
@@ -1418,6 +1420,7 @@ function setStage1FormLocked(locked) {
     batchSelect,
     retryInput,
     dpiInput,
+    ocrThresholdSelect,
     detectCoverToggle,
     preprocessToggle,
     llmRefineToggle,

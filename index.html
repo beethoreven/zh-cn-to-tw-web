@@ -73,6 +73,19 @@
                 </div>
 
                 <div class="field">
+                  <label for="ocr-threshold-select">OCR門檻值</label>
+                  <select id="ocr-threshold-select">
+                    <option value="0.1">0.1</option>
+                    <option value="0.3" selected>0.3</option>
+                    <option value="0.5">0.5</option>
+                    <option value="0.7">0.7</option>
+                  </select>
+                  <p class="field-help">
+                    辨識文字的門檻值，越低越不會漏字，但有抓到雜訊的風險，若背景壓圖可能需要高門檻值才能抓到字。
+                  </p>
+                </div>
+
+                <div class="field">
                   <label class="switch-row" for="detect-cover-toggle">
                     <span>偵測首頁是否為封面</span>
                     <span class="switch-with-label">
