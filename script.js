@@ -388,27 +388,6 @@ function authHeaders() {
 async function authedFetch(url, options = {}) {
   const headers = { ...(options.headers || {}), ...authHeaders() };
   const res = await fetch(url, { ...options, headers });
-
-  // 帳號被管理員停用：後端回 403 且帶 code="account_disabled"（見
-  // app.py 的 _ACCOUNT_DISABLED_BODY）。這種情況重新登入沒有用，
-  // /auth/login 一樣會擋，所以直接鎖回未登入狀態並說明原因，不要
-  // 走下面那條「觸發重新登入」的路。
-  //
-  // 一定要看 code 而不是只看 403：403 在後端有三個來源，其中「沒有
-  // 權限查看這個專案的用量」是單一操作的權限問題，那時把使用者踢出去
-  // 是錯的——他在其他功能上完全正常。
-  //
-  // 用 res.clone() 讀 body，因為呼叫端等一下還要自己讀一次；response
-  // 的 body 是 stream，只能讀一次。
-  if (res.status === 403 && currentSessionToken) {
-    const data = await res.clone().json().catch(() => ({}));
-    if (data.code === "account_disabled") {
-      showSignedOutUI();
-      showToast(data.error || "此帳號已被停用，請聯絡管理員", "error");
-    }
-    return res;
-  }
-
   if (res.status !== 401 || !currentSessionToken) return res;
   requestReauthOnce();
   await waitForReauth();
