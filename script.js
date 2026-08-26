@@ -279,6 +279,48 @@ let isPersonalProject = false;
 let stage1AllOpts = null;
 let stage2AllOpts = null;
 
+// /api/options 與 /api/review-options 這兩支回傳的都是純靜態設定（可選
+// model、各欄位上下限與說明文字），整個 session 不會變——沒有額度數字、
+// 沒有跟使用者相關的東西。但原本有好幾處各自重打一次：用量列表要拿
+// model 的顯示名稱、本案用量要、管理員總量也要，每次都是一趟完整的
+// HTTP 往返，只為了一份已經在記憶體裡的資料。
+//
+// 快取成 promise 而不是快取結果本身，是因為登入後這幾支是「平行發出、
+// 沒有 await」的（見 auth/status 那段的 loadOptions/loadReviewOptions/
+// loadUsage/loadMyProjects），單純檢查 stage1AllOpts 是不是 null 會踩到
+// 競態：loadUsage 可能比 loadOptions 早跑到，那時變數還是 null。存
+// promise 的話，同時進來的呼叫者會共用同一個 in-flight 請求，連競態
+// 當下都不會重複發。
+//
+// 失敗時要把 promise 清掉，否則一次網路錯誤會被永久快取成 rejected，
+// 之後每次呼叫都拿到同一個失敗，重試也救不回來。
+let _stage1OptsPromise = null;
+let _stage2OptsPromise = null;
+
+function fetchStage1Opts() {
+  if (!_stage1OptsPromise) {
+    _stage1OptsPromise = authedFetch(`${API_BASE}/api/options`)
+      .then((res) => res.json())
+      .catch((err) => {
+        _stage1OptsPromise = null;
+        throw err;
+      });
+  }
+  return _stage1OptsPromise;
+}
+
+function fetchStage2Opts() {
+  if (!_stage2OptsPromise) {
+    _stage2OptsPromise = authedFetch(`${API_BASE}/api/review-options`)
+      .then((res) => res.json())
+      .catch((err) => {
+        _stage2OptsPromise = null;
+        throw err;
+      });
+  }
+  return _stage2OptsPromise;
+}
+
 // Stage 1/2 model 選單共用的算繪邏輯：excludeClaude 為 true 時，Claude
 // 系列 model 完全不會出現在選單裡（不是 disabled 灰字，是直接不存在），
 // 確保「選單面就不給選」；盡量保留原本選到的值，選不到才退回預設值
@@ -346,6 +388,27 @@ function authHeaders() {
 async function authedFetch(url, options = {}) {
   const headers = { ...(options.headers || {}), ...authHeaders() };
   const res = await fetch(url, { ...options, headers });
+
+  // 帳號被管理員停用：後端回 403 且帶 code="account_disabled"（見
+  // app.py 的 _ACCOUNT_DISABLED_BODY）。這種情況重新登入沒有用，
+  // /auth/login 一樣會擋，所以直接鎖回未登入狀態並說明原因，不要
+  // 走下面那條「觸發重新登入」的路。
+  //
+  // 一定要看 code 而不是只看 403：403 在後端有三個來源，其中「沒有
+  // 權限查看這個專案的用量」是單一操作的權限問題，那時把使用者踢出去
+  // 是錯的——他在其他功能上完全正常。
+  //
+  // 用 res.clone() 讀 body，因為呼叫端等一下還要自己讀一次；response
+  // 的 body 是 stream，只能讀一次。
+  if (res.status === 403 && currentSessionToken) {
+    const data = await res.clone().json().catch(() => ({}));
+    if (data.code === "account_disabled") {
+      showSignedOutUI();
+      showToast(data.error || "此帳號已被停用，請聯絡管理員", "error");
+    }
+    return res;
+  }
+
   if (res.status !== 401 || !currentSessionToken) return res;
   requestReauthOnce();
   await waitForReauth();
@@ -414,6 +477,14 @@ function showSignedOutUI() {
   // loadMyProjects 等呼叫因為旗標是 true 而完全不會再執行一次
   appDataLoaded = false;
   adminDataLoaded = false;
+
+  // 選項快取也一起清掉。這兩支目前回傳的是全使用者相同的靜態設定，
+  // 不清其實也不會錯；但這裡的既有規則就是「新帳號不沿用舊帳號的
+  // 資料」，而且只要哪天 model 清單變成依角色而異（畫面上已經有依
+  // 專案過濾 Claude 的邏輯，不是不可能），跨帳號沿用就會變成真的
+  // bug——而那種 bug 不會報錯，只會安靜地顯示上一個帳號的選項。
+  _stage1OptsPromise = null;
+  _stage2OptsPromise = null;
 
   resetJobAndReviewState();
 }
@@ -830,8 +901,7 @@ async function initTaNotice() {
 }
 
 async function loadOptions() {
-  const res = await authedFetch(`${API_BASE}/api/options`);
-  const opts = await res.json();
+  const opts = await fetchStage1Opts();
   stage1AllOpts = opts;
 
   renderModelOptions(modelSelect, opts, modelDescriptions, isPersonalProject);
@@ -871,7 +941,7 @@ async function _loadUsageInner() {
   const res = await authedFetch(`${API_BASE}/api/usage`);
   const usage = await res.json();
 
-  const opts = await (await authedFetch(`${API_BASE}/api/options`)).json();
+  const opts = await fetchStage1Opts();
 
   usageList.innerHTML = "";
   for (const [model, info] of Object.entries(usage)) {
@@ -933,7 +1003,7 @@ async function loadProjectUsage() {
     return;
   }
 
-  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
+  const reviewOpts = await fetchStage2Opts();
 
   renderClaudeUsageRows(projectUsageListEl, data, reviewOpts.models);
 }
@@ -1391,8 +1461,7 @@ function renderNewLogs(logs) {
 // --- Stage 2：校對 ---
 
 async function loadReviewOptions() {
-  const res = await authedFetch(`${API_BASE}/api/review-options`);
-  const opts = await res.json();
+  const opts = await fetchStage2Opts();
   stage2AllOpts = opts;
 
   renderModelOptions(reviewModelSelect, opts, reviewModelDescriptions, isPersonalProject);
@@ -1933,7 +2002,7 @@ async function loadAdminUsageTotals() {
   const res = await authedFetch(`${API_BASE}/admin/usage/totals`);
   const data = await res.json();
 
-  const reviewOpts = await (await authedFetch(`${API_BASE}/api/review-options`)).json();
+  const reviewOpts = await fetchStage2Opts();
 
   renderClaudeUsageRows(adminUsageTotalsListEl, data, reviewOpts.models);
 }
