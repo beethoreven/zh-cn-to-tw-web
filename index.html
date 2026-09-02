@@ -30,6 +30,13 @@
     <h1>劇本殺繁化助手</h1>
     <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 潤飾</p>
 
+    <!-- 連線狀態提示。刻意放在 .page-layout 外面：頁面鎖住時
+         .main-column 會被套上 .page-locked（opacity 0.4），提示如果放在
+         裡面會跟著變灰看不清楚，而這個提示存在的意義正是「頁面為什麼
+         是灰的」。也刻意不用 toast——toast 3.5 秒就自動消失，而冷啟動
+         可能要一分鐘以上，訊息會在使用者還在等的時候就不見了。 -->
+    <p id="connection-notice" class="connection-notice" hidden></p>
+
     <div class="page-layout">
       <div class="sidebar-column">
         <section class="notice-box" id="ta-notice-box">

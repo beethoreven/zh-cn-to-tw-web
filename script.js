@@ -208,6 +208,7 @@ const accountLabelEl = document.getElementById("account-label");
 const accountDropdownEl = document.getElementById("account-dropdown");
 const btnSignOut = document.getElementById("btn-sign-out");
 const toastEl = document.getElementById("toast");
+const connectionNoticeEl = document.getElementById("connection-notice");
 
 let currentSessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
 let currentAuthorized = false;
@@ -403,6 +404,21 @@ function setPageLocked(locked) {
   mainColumnEl.classList.toggle("page-locked", locked);
 }
 
+// 連線狀態提示（#connection-notice，見 index.html）。跟 toast 分開的
+// 理由：toast 3.5 秒就自動消失，而 Render 免費方案閒置後的冷啟動實測
+// 可能超過一分鐘——訊息會在使用者還在等的時候就不見了。這個是常駐的，
+// 明確清掉才會消失。
+function showConnectionNotice(message, isError = false) {
+  connectionNoticeEl.textContent = message;
+  connectionNoticeEl.classList.toggle("is-error", isError);
+  connectionNoticeEl.hidden = false;
+}
+
+function hideConnectionNotice() {
+  connectionNoticeEl.hidden = true;
+  connectionNoticeEl.classList.remove("is-error");
+}
+
 // 主介面／管理員介面二選一顯示，同一個按鈕在兩邊切換文字跟功能
 function showMainView() {
   showingAdminView = false;
@@ -441,6 +457,10 @@ function showSignedOutUI() {
   adminToggleBtnEl.hidden = true;
   showMainView();
   setPageLocked(true);
+  // 回到未登入狀態時一併清掉連線提示——不清的話，先前的「正在連線…」
+  // 或「此帳號尚未獲得授權」會留在畫面上，跟現在的登入按鈕互相矛盾。
+  // 放在這裡而不是各個呼叫端，因為這支是「回到未登入狀態」的單一入口。
+  hideConnectionNotice();
 
   // 登出後劇本案的選擇也要重置：下次登入（可能是別的使用者）必須
   // 重新選一次，不能沿用上一個帳號選過的專案
@@ -490,15 +510,14 @@ async function checkAuthStatus() {
       showSignedInUI(data.email);
       if (!currentAuthorized) {
         setPageLocked(true);
+        showConnectionNotice("此帳號尚未獲得授權，請聯絡管理員。", true);
         showToast("此帳號尚未獲得授權", "error");
       } else {
         setPageLocked(false);
+        hideConnectionNotice();
         if (!appDataLoaded) {
           appDataLoaded = true;
-          loadOptions();
-          loadReviewOptions();
-          loadUsage();
-          loadMyProjects();
+          loadInitialAppData();
         }
       }
     } else {
@@ -513,8 +532,56 @@ async function checkAuthStatus() {
     console.error("[auth] checkAuthStatus 發生例外：", err);
     currentAuthorized = false;
     setPageLocked(true);
+    showConnectionNotice(
+      "無法連線到伺服器。\n" +
+        "如果久未使用，伺服器可能正在冷啟動（約需 1 分鐘），請稍候再重新整理；" +
+        "若持續失敗請檢查網路連線。",
+      true
+    );
     showToast("無法確認登入狀態，請檢查網路連線後重新整理", "error");
   }
+}
+
+// 登入且授權通過之後要載入的初始資料。
+//
+// 這幾支原本是「發出去就不管」——沒有 await、沒有 catch，失敗時完全
+// 靜默。實際踩到過（2026-08-26，使用者錄影回報）：Render 冷啟動時這幾支
+// 全部卡住，而頁面當時是解鎖的，使用者看到一個可以完整操作、但 Model
+// 與劇本案下拉選單都是空的表單，選了檔案按下送出，後端回一個看不懂的
+// 「缺少或無效的 project（劇本案）ID」400。從頭到尾沒有任何訊息告訴他
+// 發生了什麼事。
+//
+// 現在任何一支失敗都會：鎖回頁面（資料不完整時表單本來就不能用）、
+// 顯示常駐提示、並跳一個 error toast。訊息粗糙沒關係，重點是不能靜默
+// ——使用者至少要知道「現在不能用、為什麼」，而不是自己去撞一個莫名
+// 其妙的後端錯誤。
+async function loadInitialAppData() {
+  // loadUsage 也放進來，但它自己有 try/catch 吞掉錯誤（用量數字載不到
+  // 不影響操作，見那支函式），所以永遠不會被算成失敗——這是刻意的。
+  const results = await Promise.allSettled([
+    loadOptions(),
+    loadReviewOptions(),
+    loadUsage(),
+    loadMyProjects(),
+  ]);
+
+  const failed = results.filter((r) => r.status === "rejected");
+  if (failed.length === 0) return;
+
+  console.error(
+    "[init] 初始資料載入失敗：",
+    failed.map((f) => f.reason)
+  );
+  setPageLocked(true);
+  // 放行下一次 checkAuthStatus 重試（例如使用者重新整理之前又觸發了
+  // 一次授權檢查）；不重置的話這個 process 生命週期內永遠不會再載入。
+  appDataLoaded = false;
+  showConnectionNotice(
+    "資料載入失敗，目前無法使用。\n" +
+      "如果久未使用，伺服器可能正在冷啟動（約需 1 分鐘），請稍候再重新整理頁面。",
+    true
+  );
+  showToast("資料載入失敗，請稍後重新整理頁面", "error");
 }
 
 // Google 這裡回傳的 response.credential 是 Google ID Token，效期固定
@@ -596,6 +663,19 @@ function initGoogleSignIn() {
     // localStorage 裡已經有存起來的 token，直接拿去問後端還有沒有效，
     // 不用等 Google 的靜默登入——這就是跟 fireless-war-web 不同、
     // 「重新整理/開新分頁不會登出」的關鍵
+    //
+    // 一定要先鎖住再問。checkAuthStatus 是非同步的，而 Render 免費方案
+    // 閒置後的冷啟動實測可能超過一分鐘——原本這條路徑沒有先鎖（鎖只寫在
+    // 下面的 else 分支裡），所以「有 token 的回訪使用者」（也就是所有
+    // 正常使用者）在等待期間看到的是一個完全可以操作、但所有下拉選單
+    // 都是空的表單。實際踩到過，見 loadInitialAppData 的說明。
+    //
+    // checkAuthStatus 三條路徑都會正確設定最終狀態：成功且已授權才解鎖，
+    // 未授權或例外都維持鎖住，所以這裡先鎖不會鎖死。
+    setPageLocked(true);
+    showConnectionNotice(
+      "正在連線到伺服器…\n如果久未使用，可能需要約 1 分鐘的冷啟動，請稍候。"
+    );
     checkAuthStatus();
   } else {
     setPageLocked(true);
