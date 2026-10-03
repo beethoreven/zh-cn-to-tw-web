@@ -513,6 +513,22 @@ h1 {
   color: var(--muted);
 }
 
+/* 今日使用量：model 一多就會一路往下長、右邊又空著，改成固定兩欄。
+   fit-content 讓每欄寬度跟著該欄最長那一項（第二欄每一行的起點都切齊），
+   但最多佔一半——額度用完時那一行會多一長串說明，不設上限的話會把
+   第一欄撐開、把第二欄擠出畫面，有上限就改成在欄內換行。 */
+.usage-list--grid {
+  display: grid;
+  grid-template-columns: repeat(2, fit-content(calc(50% - 1.5rem)));
+  column-gap: 3rem;
+}
+
+@media (max-width: 520px) {
+  .usage-list--grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .usage-row-warning {
   color: #c0392b;
   font-weight: 600;
