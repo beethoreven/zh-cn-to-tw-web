@@ -22,7 +22,7 @@ Vanilla JavaScript（無框架、無建置流程），單一份 `index.html`/`sc
 
 這個 repo 以前只有一個分支（`main`），同時扮演兩個角色：GitHub Pages 從這個分支的根目錄部署出去的公開網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`），跟被 `zh-cn-to-tw-mac` 內嵌打包進桌面版 App 的網頁來源，是同一份檔案。
 
-桌面版才是這個工具現在唯一的使用方式——單純瀏覽器打開網址、PDF 直接上傳給 Render 做 OCR 的那條路，繼承了 Render 免費方案扛不住 PaddleOCR 的資源風險（見 `zh-cn-to-tw-backend` README「為什麼 OCR 搬到使用者本機」），不該再是任何人能透過網址碰到的東西。
+桌面版才是這個工具現在唯一的使用方式——單純瀏覽器打開網址、PDF 直接上傳給 Render 做 OCR 的那條路，繼承了 Render 免費方案扛不住 PaddleOCR 的資源風險（見 `zh-cn-to-tw-backend` README「為什麼 OCR 搬到使用者本機」），不該再是任何人能透過網址碰到的東西。2026-10-03 起 backend 那支收 PDF 的 `POST /api/jobs` 已經整個拔掉，`script.js` 在非桌面版模式下按 Stage 1 只會跳提示、要求改用桌面版，不會送出任何請求;Stage 2（直接上傳 .docx/.txt 校對）不需要 OCR，瀏覽器模式照樣能用。
 
 **曾經考慮過、後來放棄的方案**：把 GitHub Pages 服務的根目錄換成佔位頁，真正的網頁內容搬進同一個分支底下的 `app/` 子資料夾。這個方案的問題是 GitHub Pages 只要對某個分支開著，那個分支底下所有檔案都還是能被直接打開（`.../app/`）——只是沒有從根目錄連結出去，並沒有真正解決「這個網址打得到」的問題，只是藏起來，跟這個專案自己在別處記錄過的「延後問題、沒有根治」是同一種模式。
 
@@ -167,7 +167,7 @@ Without those parameters, it falls back to the older path of uploading the PDF s
 
 This repo used to have a single branch (`main`) that played two roles at once: the public URL GitHub Pages deploys from that branch's root (`https://beethoreven.github.io/zh-cn-to-tw-web/`), and the web source embedded by `zh-cn-to-tw-mac` into the packaged desktop app — the exact same files served both roles.
 
-The desktop app is now the only way to use this tool — a plain browser hitting the URL and uploading a PDF straight to Render for OCR inherits Render's free-tier inability to reliably run PaddleOCR (see `zh-cn-to-tw-backend`'s README, "Why OCR Moved to the User's Own Machine"), and shouldn't be something anyone can reach via a URL anymore.
+The desktop app is now the only way to use this tool — a plain browser hitting the URL and uploading a PDF straight to Render for OCR inherits Render's free-tier inability to reliably run PaddleOCR (see `zh-cn-to-tw-backend`'s README, "Why OCR Moved to the User's Own Machine"), and shouldn't be something anyone can reach via a URL anymore. As of 2026-10-03, the backend's PDF-accepting `POST /api/jobs` has been removed entirely; outside desktop mode, pressing Stage 1 in `script.js` only shows a notice asking the user to switch to the desktop app, without sending any request. Stage 2 (proofreading a directly-uploaded .docx/.txt) needs no OCR and still works in browser mode.
 
 **Tried and abandoned**: switching what GitHub Pages deploys from the repo root to a placeholder, while moving the real web content into an `app/` subfolder under the same branch. The problem: as long as GitHub Pages is enabled for a branch, every file under that branch is still reachable directly (`.../app/`) — nothing was actually unlinked from the root, but the URL itself still worked, just hidden. That's the same "defer the problem, don't fix it" pattern this project has documented elsewhere.
 

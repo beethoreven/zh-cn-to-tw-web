@@ -9,7 +9,7 @@
   <script src="https://accounts.google.com/gsi/client"></script>
 </head>
 <body>
-  <header class="top-bar" id="top-bar">
+  <header class="top-bar">
     <button type="button" id="admin-toggle-btn" class="admin-toggle-btn" hidden>管理員介面</button>
     <div id="google-signin-button" class="google-signin-btn"></div>
     <div class="account-slot" id="account-slot" hidden>
@@ -39,14 +39,14 @@
 
     <div class="page-layout">
       <div class="sidebar-column">
-        <section class="notice-box" id="ta-notice-box">
+        <section class="notice-box">
           <h2>阿舍老師的叮嚀</h2>
           <p id="ta-notice-text" class="notice-text">載入中…</p>
         </section>
       </div>
 
       <div class="main-column">
-        <section class="usage-box" id="usage-box">
+        <section class="usage-box">
           <h2>今日使用量</h2>
           <div id="usage-list" class="usage-list">載入中…</div>
 
@@ -64,8 +64,8 @@
 
         <div class="columns">
           <div class="column">
-            <section class="upload-box" id="upload-box">
-              <h2 id="stage1-title">Stage 1：簡轉繁</h2>
+            <section class="upload-box">
+              <h2>Stage 1：簡轉繁</h2>
 
               <div id="stage1-form-group">
                 <div class="field">
@@ -106,6 +106,23 @@
                   </label>
                   <p class="field-help">
                     偵測首頁是否為含圖片之封面，若是則移除。
+                  </p>
+                </div>
+
+                <div class="field">
+                  <label class="switch-row" for="split-left-right-toggle">
+                    <span>切割左右頁格式</span>
+                    <span class="switch-with-label">
+                      <span class="switch-label-text">off</span>
+                      <span class="switch">
+                        <input type="checkbox" id="split-left-right-toggle" />
+                        <span class="switch-track"></span>
+                      </span>
+                      <span class="switch-label-text">on</span>
+                    </span>
+                  </label>
+                  <p class="field-help">
+                    若檔案為左右頁格式，將其分割成兩頁，左頁為前一頁，右頁為後一頁。
                   </p>
                 </div>
 
@@ -167,7 +184,7 @@
                   <p class="field-help" id="retry-help"></p>
                 </div>
 
-                <div class="field" id="auto-review-field">
+                <div class="field">
                   <label class="switch-row" for="auto-review-toggle">
                     <span>直接進行校對</span>
                     <span class="switch-with-label">
@@ -205,7 +222,7 @@
 
             <section class="status-box" id="status-box" hidden>
               <h2>處理進度</h2>
-              <p id="status-line">狀態：<span id="status-text">-</span></p>
+              <p>狀態：<span id="status-text">-</span></p>
               <ul id="log-list"></ul>
               <div class="download-row">
                 <button id="download-btn" disabled>下載繁化結果</button>

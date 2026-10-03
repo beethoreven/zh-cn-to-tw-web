@@ -11,12 +11,28 @@ const desktopParams = new URLSearchParams(window.location.search);
 // 不走這條路了（整份前端包在 .app 裡、由本機 backend 供應）。
 //
 // 網址帶 ?apiBase=<url> 可以覆寫以上判斷，測試時要指到別的後端用。
+// 這支檔案刻意不使用 ?? 與 ?.（空值合併與可選鏈）——它們需要 Safari
+// 13.1，而 macOS 10.15 出廠是 Safari 13.0，在那上面是**語法錯誤**：整個
+// script.js 解析失敗、一行都不會執行。症狀是整頁看起來「載入了但什麼
+// 都沒有」——右上角連登入按鈕都不出現（那個按鈕是 JS 填進空 div 的）、
+// 畫面全部沒鎖、版本檢查也不會跑（所以連「該更新了」都不會提示）。
+// 10.15 分流最低支援到 10.15.0，所以整份檔案的語法上限就是 Safari 13.0。
+//
+// 用這個小工具取代 `params.get(k) ?? fallback`：URLSearchParams.get()
+// 只會回傳 string 或 null（不會有 undefined），所以判斷 null 就等價於
+// ?? 的行為，不能用 || ——那會把空字串也當成沒有值。
+function paramOr(params, key, fallback) {
+  const value = params.get(key);
+  return value === null ? fallback : value;
+}
+
 const API_BASE_OVERRIDE = desktopParams.get("apiBase");
 const API_BASE =
-  API_BASE_OVERRIDE ??
-  (window.location.hostname.endsWith("github.io")
-    ? "https://zh-cn-to-tw-backend.onrender.com"
-    : "");
+  API_BASE_OVERRIDE !== null
+    ? API_BASE_OVERRIDE
+    : window.location.hostname.endsWith("github.io")
+      ? "https://zh-cn-to-tw-backend.onrender.com"
+      : "";
 
 // ===== 桌面版 App 偵測 =====
 // 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶
@@ -30,8 +46,8 @@ const DESKTOP_OCR_TOKEN = desktopParams.get("ocrToken") || "";
 // 桌面殼載入頁面時帶的自己的版本號（見 zh-cn-to-tw-mac 的
 // ContentView.desktopURL()），只有 major/minor 兩碼，跟後端
 // GET /api/version_check 比較邏輯一致。
-const DESKTOP_APP_MAJOR = Number(desktopParams.get("appMajor") ?? "0");
-const DESKTOP_APP_MINOR = Number(desktopParams.get("appMinor") ?? "0");
+const DESKTOP_APP_MAJOR = Number(paramOr(desktopParams, "appMajor", "0"));
+const DESKTOP_APP_MINOR = Number(paramOr(desktopParams, "appMinor", "0"));
 // 這包桌面殼屬於哪一個版控分流："11+" 是主線版（部署目標 macOS 11.0，
 // Stage 1 用本機的 zh-cn-to-tw-ocr-service），"10.15" 是另一個部署目標
 // 壓到 10.15 的分流（Stage 1 改用 Apple 原生 Vision framework 做 OCR，
@@ -39,7 +55,7 @@ const DESKTOP_APP_MINOR = Number(desktopParams.get("appMinor") ?? "0");
 // ContentView.osTier 說明）。跟後端 GET /api/version_check 的
 // os_version 參數用同一套字串。省略時預設 "11+"，維持目前主要在用的
 // 那個 build 行為不變。
-const DESKTOP_OS_TIER = desktopParams.get("osTier") ?? "11+";
+const DESKTOP_OS_TIER = paramOr(desktopParams, "osTier", "11+");
 
 // 在真的要開始 Stage 1/2 工作之前檢查有沒有被要求強制更新。只有桌面版
 // 會檢查——瀏覽器版沒有「App 版本」這個概念，也沒有對應的 DMG 更新
@@ -103,7 +119,7 @@ async function ensureDesktopOcrReady(timeoutMs = 30000) {
     }
     await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error("本機 OCR 服務啟動逾時，請按左上角的重新整理再試一次");
+  throw new Error("本機 OCR 服務啟動逾時，請再按一次「上傳並開始繁化」重試");
 }
 
 // OCR 階段結束（結果已經拿到手、也送去 Render 了）就把服務關掉釋放記憶體。
@@ -121,7 +137,7 @@ function releaseDesktopOcr() {
 // window.__visionOcrProgress(payload) 把進度/結果推回來。resolve 出來
 // 的形狀（{ pages }）刻意跟 pollLocalOcrJob 一致，呼叫端不用分兩套
 // 邏輯處理後續（送去 Render 潤飾那段完全共用）。
-function runVisionOcrJob(file, dpi, detectCover) {
+function runVisionOcrJob(file, dpi, detectCover, splitLeftRight) {
   return new Promise((resolve, reject) => {
     const jobId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -142,7 +158,7 @@ function runVisionOcrJob(file, dpi, detectCover) {
         return;
       }
       statusText.textContent = payload.totalPages
-        ? `本機 OCR 辨識中（第 ${payload.currentPage ?? 0}/${payload.totalPages} 頁）`
+        ? `本機 OCR 辨識中（第 ${payload.currentPage != null ? payload.currentPage : 0}/${payload.totalPages} 頁）`
         : "本機 OCR 準備中（讀取 PDF）";
     };
 
@@ -153,15 +169,15 @@ function runVisionOcrJob(file, dpi, detectCover) {
     };
     reader.onload = () => {
       const base64 = String(reader.result).split(",")[1] || "";
-      window.webkit.messageHandlers.visionOcr.postMessage({ jobId, pdfBase64: base64, dpi, detectCover });
+      window.webkit.messageHandlers.visionOcr.postMessage({ jobId, pdfBase64: base64, dpi, detectCover, splitLeftRight });
     };
     reader.readAsDataURL(file);
   });
 }
 
-// Render 免費方案閒置約 15 分鐘會休眠。GitHub Actions 的排程 keep-alive
-// 無法保證真的每 10 分鐘執行(GitHub 自己的 schedule 觸發時間常常延遲數小時),
-// 所以只要這個分頁還開著,就自己每 5 分鐘打一次 /api/health,確保使用中途
+// Render 免費方案閒置約 15 分鐘會休眠。原本 backend repo 另外有一個 GitHub
+// Actions 排程 keep-alive，但它無法保證真的每 10 分鐘執行（實測間隔是 3-5
+// 小時），已停用並移除。所以只要這個分頁還開著,就自己每 5 分鐘打一次 /api/health,確保使用中途
 // 不會被 Render 判定閒置——不需要登入,/api/health 本來就是為了這個用途設計的公開端點。
 // 一開始就先打一次(不等第一個 5 分鐘),盡量提早把可能還在睡的後端叫醒。
 function pingKeepAlive() {
@@ -342,7 +358,7 @@ function renderModelOptions(selectEl, opts, descriptionsMap, excludeClaude) {
   } else if (hasOption(opts.default_model)) {
     selectEl.value = opts.default_model;
   } else {
-    selectEl.value = selectEl.options[0]?.value || "";
+    selectEl.value = selectEl.options.length ? selectEl.options[0].value : "";
   }
 }
 
@@ -558,20 +574,29 @@ async function checkAuthStatus() {
 async function loadInitialAppData() {
   // loadUsage 也放進來，但它自己有 try/catch 吞掉錯誤（用量數字載不到
   // 不影響操作，見那支函式），所以永遠不會被算成失敗——這是刻意的。
-  const results = await Promise.allSettled([
-    loadOptions(),
-    loadReviewOptions(),
-    loadUsage(),
-    loadMyProjects(),
-  ]);
+  //
+  // 刻意不用 Promise.allSettled：它要 Safari 13，而這支檔案的相容性
+  // 下限是 Safari 13.0（見檔案開頭關於 10.15 的說明）。手寫等價物只有
+  // 三行，不值得為它把整份檔案的下限往上推——尤其這裡是「載入失敗要
+  // 有提示」的錯誤處理路徑，它自己在舊環境炸掉會特別難查。
+  const settle = (p) =>
+    Promise.resolve(p).then(
+      () => null,
+      (reason) => reason || new Error("unknown failure")
+    );
 
-  const failed = results.filter((r) => r.status === "rejected");
+  const failed = (
+    await Promise.all([
+      settle(loadOptions()),
+      settle(loadReviewOptions()),
+      settle(loadUsage()),
+      settle(loadMyProjects()),
+    ])
+  ).filter((reason) => reason !== null);
+
   if (failed.length === 0) return;
 
-  console.error(
-    "[init] 初始資料載入失敗：",
-    failed.map((f) => f.reason)
-  );
+  console.error("[init] 初始資料載入失敗：", failed);
   setPageLocked(true);
   // 放行下一次 checkAuthStatus 重試（例如使用者重新整理之前又觸發了
   // 一次授權檢查）；不重置的話這個 process 生命週期內永遠不會再載入。
@@ -777,7 +802,12 @@ async function downloadViaAuthedFetch(url, fallbackFilename) {
   // postMessage 給殼的 legacyDownload channel，殼收到後自己解碼寫進
   // 下載資料夾（見 WebView.swift 的 handleLegacyDownload）。11+ 桌面殼
   // 跟純瀏覽器都沒有這個 channel，走下面原本那條路，行為不變。
-  if (DESKTOP_OS_TIER === "10.15" && window.webkit?.messageHandlers?.legacyDownload) {
+  if (
+    DESKTOP_OS_TIER === "10.15" &&
+    window.webkit &&
+    window.webkit.messageHandlers &&
+    window.webkit.messageHandlers.legacyDownload
+  ) {
     const base64 = await blobToBase64(blob);
     window.webkit.messageHandlers.legacyDownload.postMessage({ filename, base64 });
     return;
@@ -801,9 +831,9 @@ const logList = document.getElementById("log-list");
 const downloadBtn = document.getElementById("download-btn");
 const docxToggle = document.getElementById("docx-toggle");
 const autoReviewToggle = document.getElementById("auto-review-toggle");
-const autoReviewField = document.getElementById("auto-review-field");
 autoReviewToggle.addEventListener("change", () => updateLlmRefineDependentLock());
 const detectCoverToggle = document.getElementById("detect-cover-toggle");
+const splitLeftRightToggle = document.getElementById("split-left-right-toggle");
 const preprocessToggle = document.getElementById("preprocess-toggle");
 preprocessToggle.addEventListener("change", updateLlmRefineDependentLock);
 const llmRefineToggle = document.getElementById("llm-refine-toggle");
@@ -1004,7 +1034,7 @@ async function _loadUsageInner() {
 
   usageList.innerHTML = "";
   for (const [model, info] of Object.entries(usage)) {
-    const label = opts.models[model]?.label || model;
+    const label = (opts.models[model] || {}).label || model;
     const row = document.createElement("div");
     row.className = "usage-row";
     if (info.used >= info.limit) {
@@ -1022,7 +1052,7 @@ async function _loadUsageInner() {
 function renderClaudeUsageRows(listEl, data, modelInfoMap) {
   listEl.innerHTML = "";
   for (const [model, info] of Object.entries(data.models)) {
-    const label = modelInfoMap[model]?.label || model;
+    const label = (modelInfoMap[model] || {}).label || model;
     const totalTokens = info.input_tokens + info.output_tokens;
     const row = document.createElement("div");
     row.className = "usage-row";
@@ -1107,16 +1137,12 @@ submitBtn.addEventListener("click", async () => {
     return;
   }
 
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("model", modelSelect.value);
-  formData.append("batch_pages", batchSelect.value);
-  formData.append("max_retry", retryInput.value);
-  formData.append("dpi", dpiInput.value);
-  formData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
-  formData.append("enable_preprocess", preprocessToggle.checked ? "true" : "false");
-  formData.append("enable_llm_refine", llmRefineToggle.checked ? "true" : "false");
-  formData.append("project", currentProjectId);
+  // OCR 一律在使用者本機做（桌面殼內嵌的 zh-cn-to-tw-ocr-service 或 Apple
+  // Vision framework），backend 已經沒有接收 PDF 的路徑。
+  if (!DESKTOP_MODE) {
+    showToast("Stage 1 需要使用桌面版 App（OCR 在本機執行）", "error");
+    return;
+  }
 
   lastStage1Model = modelSelect.value;
   stage1Started = true;
@@ -1147,80 +1173,75 @@ submitBtn.addEventListener("click", async () => {
   rerunBtn.disabled = true;
 
   try {
-    let jobId;
-    if (DESKTOP_MODE) {
-      let pages;
-      if (DESKTOP_OS_TIER === "10.15") {
-        // Vision framework 在同一個 process 裡跑，沒有 subprocess 可以
-        // 啟動/關閉，不需要 ensureDesktopOcrReady/releaseDesktopOcr
-        // 那套「用到才開、用完就關」的機制（見 runVisionOcrJob 的說明）。
-        statusText.textContent = "本機 OCR 準備中（讀取 PDF）";
-        pages = (await runVisionOcrJob(file, Number(dpiInput.value), detectCoverToggle.checked)).pages;
-      } else {
-        statusText.textContent = "啟動本機 OCR 服務";
-        // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用（見
-        // ensureDesktopOcrReady 的說明）。不管後面成功還是失敗，finally
-        // 都會把它關掉，記憶體不會一直佔著。
-        try {
-          const ocrBase = await ensureDesktopOcrReady();
-
-          statusText.textContent = "本機 OCR 辨識中";
-          const ocrFormData = new FormData();
-          ocrFormData.append("file", file);
-          ocrFormData.append("dpi", dpiInput.value);
-          ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
-          ocrFormData.append("box_thresh", ocrThresholdSelect.value);
-
-          const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
-            method: "POST",
-            headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
-            body: ocrFormData,
-          });
-          if (!startRes.ok) {
-            const err = await startRes.json();
-            throw new Error(err.error || "本機 OCR 辨識失敗");
-          }
-          const { job_id: ocrJobId } = await startRes.json();
-          ({ pages } = await pollLocalOcrJob(ocrJobId));
-        } finally {
-          // OCR 這一步已經結束（成功或失敗都一樣），結果也已經在 pages 這個
-          // 變數裡了，服務沒有存在的必要，關掉把記憶體還回去。後面把文字送去
-          // Render 潤飾那段完全不需要它。
-          releaseDesktopOcr();
-        }
-      }
-
-      statusText.textContent = "上傳中";
-      const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pages,
-          model: modelSelect.value,
-          batch_pages: batchSelect.value,
-          max_retry: retryInput.value,
-          enable_preprocess: preprocessToggle.checked,
-          enable_llm_refine: llmRefineToggle.checked,
-          file_name: file.name,
-          project: currentProjectId,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "上傳失敗");
-      }
-      ({ job_id: jobId } = await res.json());
+    let pages;
+    if (DESKTOP_OS_TIER === "10.15") {
+      // Vision framework 在同一個 process 裡跑，沒有 subprocess 可以
+      // 啟動/關閉，不需要 ensureDesktopOcrReady/releaseDesktopOcr
+      // 那套「用到才開、用完就關」的機制（見 runVisionOcrJob 的說明）。
+      statusText.textContent = "本機 OCR 準備中（讀取 PDF）";
+      pages = (
+        await runVisionOcrJob(
+          file,
+          Number(dpiInput.value),
+          detectCoverToggle.checked,
+          splitLeftRightToggle.checked
+        )
+      ).pages;
     } else {
-      const res = await authedFetch(`${API_BASE}/api/jobs`, {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "上傳失敗");
+      statusText.textContent = "啟動本機 OCR 服務";
+      // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用（見
+      // ensureDesktopOcrReady 的說明）。不管後面成功還是失敗，finally
+      // 都會把它關掉，記憶體不會一直佔著。
+      try {
+        const ocrBase = await ensureDesktopOcrReady();
+
+        statusText.textContent = "本機 OCR 辨識中";
+        const ocrFormData = new FormData();
+        ocrFormData.append("file", file);
+        ocrFormData.append("dpi", dpiInput.value);
+        ocrFormData.append("detect_cover", detectCoverToggle.checked ? "true" : "false");
+        ocrFormData.append("split_left_right", splitLeftRightToggle.checked ? "true" : "false");
+        ocrFormData.append("box_thresh", ocrThresholdSelect.value);
+
+        const startRes = await fetch(`${ocrBase}/ocr/pdf/start`, {
+          method: "POST",
+          headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
+          body: ocrFormData,
+        });
+        if (!startRes.ok) {
+          const err = await startRes.json();
+          throw new Error(err.error || "本機 OCR 辨識失敗");
+        }
+        const { job_id: ocrJobId } = await startRes.json();
+        ({ pages } = await pollLocalOcrJob(ocrJobId));
+      } finally {
+        // OCR 這一步已經結束（成功或失敗都一樣），結果也已經在 pages 這個
+        // 變數裡了，服務沒有存在的必要，關掉把記憶體還回去。後面把文字送去
+        // Render 潤飾那段完全不需要它。
+        releaseDesktopOcr();
       }
-      ({ job_id: jobId } = await res.json());
     }
+
+    statusText.textContent = "上傳中";
+    const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        pages,
+        model: modelSelect.value,
+        batch_pages: batchSelect.value,
+        max_retry: retryInput.value,
+        enable_preprocess: preprocessToggle.checked,
+        enable_llm_refine: llmRefineToggle.checked,
+        file_name: file.name,
+        project: currentProjectId,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "上傳失敗");
+    }
+    const { job_id: jobId } = await res.json();
     pollJob(jobId);
   } catch (e) {
     if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
@@ -1550,6 +1571,7 @@ function setStage1FormLocked(locked) {
     dpiInput,
     ocrThresholdSelect,
     detectCoverToggle,
+    splitLeftRightToggle,
     preprocessToggle,
     llmRefineToggle,
     docxToggle,
@@ -2245,7 +2267,11 @@ function initUsersPanel() {
     // 順序（萬一 API 回傳順序改變，或未來多了別的非管理員角色，
     // 「挑最後一個」這種寫法可能會不小心把新使用者預設成管理員）
     const defaultRoleOption = [...roleEl.options].find((o) => o.textContent !== "admin");
-    roleEl.value = defaultRoleOption ? defaultRoleOption.value : roleEl.options[0]?.value || "";
+    roleEl.value = defaultRoleOption
+      ? defaultRoleOption.value
+      : roleEl.options.length
+        ? roleEl.options[0].value
+        : "";
     statusEl.value = "active";
     fieldsEl.hidden = false;
     createActionsEl.hidden = false;
@@ -2494,7 +2520,7 @@ function initProjectsPanel() {
     editing = false;
     idFieldEl.hidden = true;
     nameEl.value = "";
-    ownerEl.value = ownerEl.options[0]?.value || "";
+    ownerEl.value = ownerEl.options.length ? ownerEl.options[0].value : "";
     statusEl.value = "pending";
     fieldsEl.hidden = false;
     createActionsEl.hidden = false;
