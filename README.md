@@ -1,6 +1,6 @@
 # update-page
 
-這個分支只服務一個目的：GitHub Pages 從這裡發布 `https://beethoreven.github.io/zh-cn-to-tw-web/`。內容是桌面版 App 的下載頁（`index.html`），這裡不會自己存安裝檔，每個下載點都**直接連到**對應 repo 的 GitHub Release 底下的檔案本身（版控真正的來源在那邊）：
+這個分支只服務一個目的：GitHub Pages 從這裡發布 `https://beethoreven.github.io/zh-cn-to-tw-web/`。內容是桌面版 App 的下載頁（`index.html` + 安裝說明文字 `download_notice.txt`），這裡不會自己存安裝檔，每個下載點都**直接連到**對應 repo 的 GitHub Release 底下的檔案本身（版控真正的來源在那邊）：
 
 | 平台 | 下載點 | Release 所在 repo | tag | 檔名 |
 |---|---|---|---|---|
@@ -21,7 +21,7 @@ GitHub Release 資產的檔名刻意用純 ASCII（不含 CJK）：早期試過�
 3. **在「更新說明」區塊最上面補上這一版的說明。**
 4. Mac 跟 Windows 各自獨立：兩邊不一定每個版號都有對應的發布，哪一邊真的發了 Release 才加那一邊的區塊，不要先放一個還不存在的連結。
 
-頁面最下面的「安裝說明」不是寫在這個檔案裡的，是載入時向後端 `GET /api/download_notice` 抓的，內容來源是 `zh-cn-to-tw-backend` repo 根目錄的 `download_notice.txt`——要改安裝說明去改那份檔案，不用碰這個分支。
+頁面最下面的「安裝說明」不是寫在 `index.html` 裡的，是載入時讀這個分支根目錄的 `download_notice.txt`——要改安裝說明就編輯那份純文字檔、commit、push，不用碰 `index.html`。換行會原樣呈現，內容當純文字處理（不解析 HTML）。這份檔案在 2026-10-03 以前放在 `zh-cn-to-tw-backend`、透過 `GET /api/download_notice` 讀取；搬回來是因為這個頁面本來就是靜態站，繞去 Render 只會讓安裝說明在後端休眠時卡在「載入中」、後端掛掉時整段消失。
 
 ## 跟 main 分支的關係
 
