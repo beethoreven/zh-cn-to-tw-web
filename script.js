@@ -2400,6 +2400,9 @@ function initPermissionsPanel() {
 
 // --- 專案管理 ---
 
+// 新建專案時「負責人1」的預設值：專案擁有者自己的使用者 id
+const DEFAULT_PROJECT_OWNER_ID = 1;
+
 function initProjectsPanel() {
   const selectEl = document.getElementById("admin-project-select");
   const loadBtn = document.getElementById("admin-project-load-btn");
@@ -2547,9 +2550,18 @@ function initProjectsPanel() {
     editing = false;
     idFieldEl.hidden = true;
     nameEl.value = "";
-    // 負責人1 預設第一個使用者，負責人2/3 預設空白（第一個選項就是「（無）」）
-    ownerEls.forEach((ownerEl) => {
-      ownerEl.value = ownerEl.options.length ? ownerEl.options[0].value : "";
+    // 負責人1 預設是專案擁有者自己（固定 id=1）；負責人2/3 預設空白
+    // （第一個選項就是「（無）」）。id=1 萬一不在 active 名單裡，<select>
+    // 會選不中、.value 變成空字串——這時退回名單第一個人，不要讓必填的
+    // 負責人1 空著送出去。
+    ownerEls.forEach((ownerEl, index) => {
+      const firstValue = ownerEl.options.length ? ownerEl.options[0].value : "";
+      if (index > 0) {
+        ownerEl.value = firstValue;
+        return;
+      }
+      ownerEl.value = String(DEFAULT_PROJECT_OWNER_ID);
+      if (ownerEl.value !== String(DEFAULT_PROJECT_OWNER_ID)) ownerEl.value = firstValue;
     });
     statusEl.value = "pending";
     fieldsEl.hidden = false;
