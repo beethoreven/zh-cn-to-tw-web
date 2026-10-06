@@ -172,6 +172,25 @@ body {
   display: none;
 }
 
+/* 專案管理的欄位固定排成兩行：第一行 ID／名稱／狀態，第二行負責人1／2／3。
+   共用的 .admin-fields 是 auto-fit，一行放幾格跟著視窗寬度變，沒辦法
+   保證負責人一定從第二行開始——這裡改成固定三欄，再把負責人1 釘在
+   第一欄強制換行（新建模式 ID 那格會隱藏，第一行只剩兩格，負責人
+   一樣從第二行開始）。 */
+.admin-project-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-project-fields .admin-project-owner-first {
+  grid-column: 1;
+}
+
+@media (max-width: 520px) {
+  .admin-project-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .admin-fields-actions {
   display: flex;
   gap: 0.75rem;

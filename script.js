@@ -2409,12 +2409,14 @@ function initProjectsPanel() {
   const idFieldEl = document.getElementById("admin-project-id-field");
   const idEl = document.getElementById("admin-project-id");
   const nameEl = document.getElementById("admin-project-name");
-  const ownerEl = document.getElementById("admin-project-owner");
+  // 三個負責人欄位（拆單時一個專案會同時給不只一個人）。負責人1 必填，
+  // 負責人2/3 可以空著；三格重複填同一個人後端不會報錯。
+  const ownerEls = [1, 2, 3].map((n) => document.getElementById(`admin-project-owner-${n}`));
   const statusEl = document.getElementById("admin-project-status");
   const createActionsEl = document.getElementById("admin-project-create-actions");
   const createSubmitBtn = document.getElementById("admin-project-create-submit-btn");
   const createCancelBtn = document.getElementById("admin-project-create-cancel-btn");
-  const editableFields = [nameEl, ownerEl, statusEl];
+  const editableFields = [nameEl, statusEl, ...ownerEls];
 
   let currentProjectId = null;
   let editing = false;
@@ -2429,7 +2431,25 @@ function initProjectsPanel() {
     // 只列出 active 的使用者，deactive 的不能被指派為新的負責人
     const res = await authedFetch(`${API_BASE}/admin/users/active-names`);
     const data = await res.json();
-    populateSelect(ownerEl, data.users, "id", "name");
+    ownerEls.forEach((ownerEl, index) => {
+      populateSelect(ownerEl, data.users, "id", "name");
+      if (index > 0) {
+        // 負責人2/3 可以不填：最前面補一個空白選項
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "（無）";
+        ownerEl.insertBefore(emptyOption, ownerEl.firstChild);
+      }
+    });
+  }
+
+  // 送給後端的三個負責人欄位。空白選項送 null（不是 Number("") 的 0）
+  function ownersPayload() {
+    const payload = {};
+    ownerEls.forEach((ownerEl, index) => {
+      payload[`owner_${index + 1}`] = ownerEl.value === "" ? null : Number(ownerEl.value);
+    });
+    return payload;
   }
 
   function resetToViewMode() {
@@ -2461,18 +2481,25 @@ function initProjectsPanel() {
       nameEl.value = project.name;
       // 負責人可能是目前已 deactive、active-only 下拉選單裡搜尋不到的人——
       // 這種情況原本會讓 <select> 選不中任何選項，.value 變成空字串，
-      // 「不改負責人」按儲存時反而把 owner 意外送成空字串(轉數字後是 0)，
-      // 悄悄把負責人改壞。這裡額外補一個選項，確保畫面正確顯示、
-      // 「不改負責人」時儲存的還是原本的 owner id；要換人才必須換成
-      // active 名單裡的人。
-      ownerEl.value = project.owner;
-      if (ownerEl.value !== String(project.owner)) {
-        const deactiveOwnerOption = document.createElement("option");
-        deactiveOwnerOption.value = project.owner;
-        deactiveOwnerOption.textContent = `${project.owner_name || project.owner}（已停用）`;
-        ownerEl.appendChild(deactiveOwnerOption);
-        ownerEl.value = project.owner;
-      }
+      // 「不改負責人」按儲存時反而把負責人意外送成空值，悄悄把負責人
+      // 改壞。這裡額外補一個選項，確保畫面正確顯示、「不改負責人」時
+      // 儲存的還是原本的 id；要換人才必須換成 active 名單裡的人。
+      ownerEls.forEach((ownerEl, index) => {
+        const ownerId = project[`owner_${index + 1}`];
+        const ownerName = project[`owner_${index + 1}_name`];
+        if (ownerId === null || ownerId === undefined) {
+          ownerEl.value = "";
+          return;
+        }
+        ownerEl.value = ownerId;
+        if (ownerEl.value !== String(ownerId)) {
+          const deactiveOwnerOption = document.createElement("option");
+          deactiveOwnerOption.value = ownerId;
+          deactiveOwnerOption.textContent = `${ownerName || ownerId}（已停用）`;
+          ownerEl.appendChild(deactiveOwnerOption);
+          ownerEl.value = ownerId;
+        }
+      });
       statusEl.value = project.status;
       fieldsEl.hidden = false;
       createActionsEl.hidden = true;
@@ -2498,8 +2525,8 @@ function initProjectsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: nameEl.value.trim(),
-          owner: Number(ownerEl.value),
           status: statusEl.value,
+          ...ownersPayload(),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "儲存失敗");
@@ -2520,7 +2547,10 @@ function initProjectsPanel() {
     editing = false;
     idFieldEl.hidden = true;
     nameEl.value = "";
-    ownerEl.value = ownerEl.options.length ? ownerEl.options[0].value : "";
+    // 負責人1 預設第一個使用者，負責人2/3 預設空白（第一個選項就是「（無）」）
+    ownerEls.forEach((ownerEl) => {
+      ownerEl.value = ownerEl.options.length ? ownerEl.options[0].value : "";
+    });
     statusEl.value = "pending";
     fieldsEl.hidden = false;
     createActionsEl.hidden = false;
@@ -2537,8 +2567,8 @@ function initProjectsPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: nameEl.value.trim(),
-          owner: Number(ownerEl.value),
           status: statusEl.value,
+          ...ownersPayload(),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error || "建立失敗");

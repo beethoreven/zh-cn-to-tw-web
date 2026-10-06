@@ -435,7 +435,7 @@
         <button type="button" id="admin-project-new-btn">新建</button>
       </div>
 
-      <div class="admin-fields" id="admin-project-fields" hidden>
+      <div class="admin-fields admin-project-fields" id="admin-project-fields" hidden>
         <div class="field" id="admin-project-id-field">
           <label for="admin-project-id">ID</label>
           <input type="text" id="admin-project-id" disabled />
@@ -443,10 +443,6 @@
         <div class="field">
           <label for="admin-project-name">名稱</label>
           <input type="text" id="admin-project-name" disabled />
-        </div>
-        <div class="field">
-          <label for="admin-project-owner">負責人</label>
-          <select id="admin-project-owner" disabled></select>
         </div>
         <div class="field">
           <label for="admin-project-status">狀態</label>
@@ -458,6 +454,20 @@
             <option value="paid">paid</option>
             <option value="closed">closed</option>
           </select>
+        </div>
+        <!-- 第二行：三個負責人。拆單時一個專案會同時給不只一個人，
+             任何一格填到的人都能使用這個專案；負責人2/3 可以空著 -->
+        <div class="field admin-project-owner-first">
+          <label for="admin-project-owner-1">負責人1</label>
+          <select id="admin-project-owner-1" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-project-owner-2">負責人2</label>
+          <select id="admin-project-owner-2" disabled></select>
+        </div>
+        <div class="field">
+          <label for="admin-project-owner-3">負責人3</label>
+          <select id="admin-project-owner-3" disabled></select>
         </div>
         <div class="admin-fields-actions" id="admin-project-create-actions" hidden>
           <button type="button" id="admin-project-create-submit-btn">建立</button>
