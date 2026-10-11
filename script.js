@@ -844,12 +844,10 @@ let currentJobId = null;
 let lastStage1Model = null; // Stage 1 這次用的 model，「直接進行校對」開啟時要沿用
 
 // 「一次只能做一件事」的整體鎖定狀態：
-// - stage1Started：Stage 1 曾經送出過（即使已完成），直接上傳就永久鎖住
 // - isProcessing：Stage 1 或 Stage 2 目前正在跑，跑的時候整頁都鎖住
 // - stage2Unlocked：Stage 2 的設定欄位是否已經解鎖過（按過「開始校對」
 //   或直接上傳成功過）；每次重新送出 Stage 1 都會重置，逼使用者針對
 //   新的來源重新確認一次
-let stage1Started = false;
 let isProcessing = false;
 let stage2Unlocked = false;
 
@@ -1145,7 +1143,6 @@ submitBtn.addEventListener("click", async () => {
   }
 
   lastStage1Model = modelSelect.value;
-  stage1Started = true;
   setProcessing(true);
   hasDownloaded = false;
   stage2Unlocked = false;
@@ -1236,7 +1233,6 @@ submitBtn.addEventListener("click", async () => {
     if (PERSONAL_PROJECT_ERROR_MESSAGES.has(e.message)) {
       showToast(e.message, "error");
       statusBox.hidden = true;
-      stage1Started = false;
     } else {
       statusText.textContent = `錯誤：${e.message}`;
     }
@@ -1621,7 +1617,7 @@ function setDirectUploadLocked(locked) {
 // 下方的 Stage 1/2 區塊要等選定劇本案並按下確定後才解鎖。
 function refreshLockStates() {
   setStage1FormLocked(isProcessing || !projectConfirmed);
-  setDirectUploadLocked(stage1Started || isProcessing || !projectConfirmed);
+  setDirectUploadLocked(isProcessing || !projectConfirmed);
   setStage2Locked(isProcessing || !stage2Unlocked || !projectConfirmed);
   if (isProcessing) {
     rerunBtn.disabled = true;
@@ -1688,6 +1684,7 @@ directUploadBtn.addEventListener("click", async () => {
     currentJobId = jobId;
     // 上傳成功才清：失敗的話 currentJobId 還是舊檔案，畫面上的舊結果
     // 仍然對得上，不該清掉。
+    clearStage1Result();
     clearPreviousReview();
 
     if (!reviewOptionsLoaded) {
@@ -1711,6 +1708,20 @@ function resetReviewUI() {
   findingsList.innerHTML = "";
   reviewDownloadBtn.disabled = true;
   rerunBtn.disabled = true;
+}
+
+// 跑過 Stage 1 之後改用直接上傳時，左邊 Stage 1 的狀態區跟下載鍵要一併
+// 清掉：「下載繁化結果」跟直接上傳共用 currentJobId，不清的話那顆鍵
+// 會變成下載剛上傳的檔案，而不是畫面上顯示的那次 Stage 1 結果。
+function clearStage1Result() {
+  clearInterval(pollTimer);
+  pollGeneration++;
+  statusBox.hidden = true;
+  logList.innerHTML = "";
+  renderedLogCount = 0;
+  renderedLocalOcrLogCount = 0;
+  downloadBtn.disabled = true;
+  startReviewBtn.disabled = true;
 }
 
 // 上一個檔案如果已經跑完 Stage 2、留有校對結果／下載鍵／重新校對鍵
@@ -1740,7 +1751,6 @@ function resetJobAndReviewState() {
   clearInterval(reviewPollTimer);
   currentJobId = null;
   currentReviewId = null;
-  stage1Started = false;
   setProcessing(false);
   stage2Unlocked = false;
   renderedLogCount = 0;
