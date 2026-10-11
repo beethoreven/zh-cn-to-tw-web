@@ -1159,18 +1159,7 @@ submitBtn.addEventListener("click", async () => {
   currentJobId = null;
   statusText.textContent = "上傳中";
 
-  // 上一個檔案如果已經跑完 Stage 2、留有校對結果／下載鍵／重新校對鍵
-  // 還能按，這裡要一併清掉——不然這些畫面跟按鍵會一直指向舊檔案的
-  // review_id，讓人誤以為是這次剛上傳的檔案的結果
-  currentReviewId = null;
-  clearInterval(reviewPollTimer);
-  renderedReviewLogCount = 0;
-  reviewProgress.hidden = true;
-  reviewLogList.innerHTML = "";
-  reviewFindingsSection.hidden = true;
-  findingsList.innerHTML = "";
-  reviewDownloadBtn.disabled = true;
-  rerunBtn.disabled = true;
+  clearPreviousReview();
 
   try {
     let pages;
@@ -1697,6 +1686,9 @@ directUploadBtn.addEventListener("click", async () => {
     }
     const { job_id: jobId } = await res.json();
     currentJobId = jobId;
+    // 上傳成功才清：失敗的話 currentJobId 還是舊檔案，畫面上的舊結果
+    // 仍然對得上，不該清掉。
+    clearPreviousReview();
 
     if (!reviewOptionsLoaded) {
       await loadReviewOptions();
@@ -1715,6 +1707,24 @@ function resetReviewUI() {
   reviewLogList.innerHTML = "";
   renderedReviewLogCount = 0;
   reviewStatusText.textContent = "上傳中";
+  reviewFindingsSection.hidden = true;
+  findingsList.innerHTML = "";
+  reviewDownloadBtn.disabled = true;
+  rerunBtn.disabled = true;
+}
+
+// 上一個檔案如果已經跑完 Stage 2、留有校對結果／下載鍵／重新校對鍵
+// 還能按，換檔案時（Stage 1 重新上傳、或 Stage 2 直接上傳）要一併清掉
+// ——不然這些畫面跟按鍵會一直指向舊檔案的 review_id，讓人誤以為是這次
+// 剛上傳的檔案的結果
+function clearPreviousReview() {
+  currentReviewId = null;
+  clearInterval(reviewPollTimer);
+  // 還在路上的輪詢回應要作廢，不然它晚到時會把舊檔案的結果畫回來
+  reviewPollGeneration++;
+  renderedReviewLogCount = 0;
+  reviewProgress.hidden = true;
+  reviewLogList.innerHTML = "";
   reviewFindingsSection.hidden = true;
   findingsList.innerHTML = "";
   reviewDownloadBtn.disabled = true;
@@ -1930,6 +1940,10 @@ function renderFindings(findings) {
     findingsList.appendChild(li);
   }
 
+  // 清單在隱藏（display: none）期間被清空時，瀏覽器不會把卷軸位置歸零，
+  // 重新顯示後會沿用上一輪的位置——上一輪拉到底的話，新結果一出來就
+  // 停在底部。要等清單已經顯示、內容也填好之後再歸零才有效。
+  findingsList.scrollTop = 0;
   updateScrollHint();
 }
 
