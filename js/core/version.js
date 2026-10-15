@@ -14,14 +14,22 @@ import {
 // backend 還在冷啟動）視為不擋：查不到版本狀態不該變成擋住使用者工作的
 // 理由，這個檢查只在明確查到「版本太舊」時才生效。
 //
-// os=macos 是寫死的歷史包袱（Windows 殼用 osTier=windows 避開 Mac 的政策
-// 資料，見 known-issue-check 第 22 條）。
+// 查哪一列門檻：Mac 送 os=macos、os_version=分流（11+／10.15）；Windows 沒有
+// 分流，送 os=windows、os_version=default。1.x～2.0 的 Windows 殼送的是
+// os=macos&os_version=windows（當年為了避開 Mac 的政策資料，見 known-issue-check
+// 第 22 條），那些舊版要靠 app_versions 裡 ('macos','windows') 那一列。
+function versionCheckKey() {
+  if (DESKTOP_OS_TIER === "windows") return { os: "windows", osVersion: "default" };
+  return { os: "macos", osVersion: DESKTOP_OS_TIER };
+}
+
 export async function checkVersionOrBlock() {
   if (!DESKTOP_MODE) return true;
+  const key = versionCheckKey();
   let data;
   try {
     const res = await fetch(
-      `${API_BASE}/api/version_check?os=macos&os_version=${encodeURIComponent(DESKTOP_OS_TIER)}` +
+      `${API_BASE}/api/version_check?os=${key.os}&os_version=${encodeURIComponent(key.osVersion)}` +
         `&major=${DESKTOP_APP_MAJOR}&minor=${DESKTOP_APP_MINOR}`
     );
     data = await res.json();
