@@ -1,0 +1,32 @@
+/* 「阿舍老師的叮嚀」與連線狀態提示。 */
+
+.notice-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--fg);
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 連線狀態提示（見 index.html 的 #connection-notice）。放在 .page-layout
+   外面，所以不會被 .page-locked 的 opacity 影響——它要在頁面變灰時
+   仍然清楚可讀，因為它就是在解釋「為什麼現在不能操作」。 */
+.connection-notice {
+  margin: -1rem 0 1.5rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid #ecdca3;
+  border-left: 3px solid var(--muted);
+  border-radius: var(--radius-control);
+  background: #fffdf5;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.connection-notice.is-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}

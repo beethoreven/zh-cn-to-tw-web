@@ -1,0 +1,74 @@
+/* Stage 2「套用範本修改」：個人範本面板、範本檢查結果、套用摘要、分析報告。 */
+
+.pattern-custom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-control);
+  padding: 1rem;
+  margin-top: -0.5rem;
+}
+
+.pattern-custom-panel button,
+.pattern-custom-panel .file-button {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+.issue-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.issue-list--warning {
+  color: var(--warning);
+}
+
+.pattern-summary {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.pattern-analysis {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed var(--border);
+}
+
+.analysis-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  max-height: 480px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.analysis-item {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-control);
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.analysis-item__head {
+  font-weight: 600;
+}
+
+.analysis-item__excerpt,
+.analysis-item__suggestion {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+}
+
+.analysis-item__issue {
+  margin: 0.3rem 0 0;
+}

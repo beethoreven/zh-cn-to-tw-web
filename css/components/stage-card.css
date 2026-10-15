@@ -1,0 +1,96 @@
+/* Stage 卡片：標題列可以點擊收合／展開。收合只是視覺上的差異——內容
+   原封不動留在 DOM 裡，打開就看得到；只有重新整理或開始新工作才會清空
+   （見 js/app/stage-card.js）。 */
+
+.stage-card {
+  padding: 0;
+}
+
+.stage-card.is-active {
+  border-color: var(--accent);
+}
+
+.stage-card__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  padding: 1.1rem 1.5rem;
+  border-radius: var(--radius-card);
+  font-size: 1rem;
+}
+
+.stage-card__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.stage-card__badge {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: #fff;
+}
+
+.stage-card__title {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.stage-card__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-size: 0.85rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-card__summary.is-error {
+  color: var(--danger);
+}
+
+/* 純 CSS 畫的箭頭：展開時朝下，收合時朝右 */
+.stage-card__chevron {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  margin: 0 0.25rem 0.25rem;
+  transition: transform 0.15s ease;
+}
+
+.stage-card.is-collapsed .stage-card__chevron {
+  transform: rotate(-45deg);
+  margin-bottom: 0;
+}
+
+.stage-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0 1.5rem 1.5rem;
+}
+
+.stage-card.is-collapsed .stage-card__body {
+  display: none;
+}
+
+.stage-card__subhead {
+  margin: 0;
+  font-size: 0.95rem;
+}

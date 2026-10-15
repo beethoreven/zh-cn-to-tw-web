@@ -1,0 +1,99 @@
+/* 基本元素：重設、字型、標題、按鈕、表單欄位。 */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "PingFang TC", "Microsoft JhengHei", -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+h2,
+h3 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-control);
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 次要按鈕：「下一步」「下載範本」這類輔助動作，跟主要動作（開始、下載
+   結果）區隔開，避免一排按鈕全部同樣搶眼 */
+.button-secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+/* <label> 偽裝成按鈕，用來觸發隱藏的 <input type="file">——檔案選擇框
+   原生外觀在各平台都不一樣，而且無法換文字 */
+.file-button {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-control);
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.file-button.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.field select,
+.field input {
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+.field-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* 說明這個欄位這次為什麼被鎖住（例如「沿用 Stage 1 選的 Model」），要比
+   一般說明顯眼，不然只看到灰掉的選單會以為壞了 */
+.field-help--note {
+  color: var(--accent);
+  font-weight: 600;
+}

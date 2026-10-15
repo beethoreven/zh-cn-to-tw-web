@@ -4,9 +4,33 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>劇本殺繁化助手</title>
-  <link rel="icon" type="image/png" href="favicon.png">
-  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+
+  <!-- 樣式表的載入順序就是優先權順序：後面的蓋前面的。刻意不用 CSS 的
+       @layer：macOS 10.15 那包用的是系統內建的 WebKit，沒更新過 Safari 的
+       機器不認得 @layer，整個區塊會被丟掉、畫面直接沒有樣式。 -->
+  <link rel="stylesheet" href="css/tokens.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components/account.css" />
+  <link rel="stylesheet" href="css/components/notice.css" />
+  <link rel="stylesheet" href="css/components/switch.css" />
+  <link rel="stylesheet" href="css/components/stepper.css" />
+  <link rel="stylesheet" href="css/components/stage-card.css" />
+  <link rel="stylesheet" href="css/components/log-list.css" />
+  <link rel="stylesheet" href="css/components/findings.css" />
+  <link rel="stylesheet" href="css/components/pattern.css" />
+  <link rel="stylesheet" href="css/components/toast.css" />
+  <link rel="stylesheet" href="css/components/modal.css" />
+  <link rel="stylesheet" href="css/pages/admin.css" />
+  <link rel="stylesheet" href="css/utilities.css" />
+
   <script src="https://accounts.google.com/gsi/client"></script>
+  <!-- 整個前端是 ES module，入口只有這一支（相依關係由各檔案自己 import）。
+       module 一定要從有來源的網址載入，file:// 會被 CORS 擋掉——桌面殼
+       2.0 起改用 https://zh-cn-to-tw.example（Windows）／zhcntotw://app（Mac）
+       載入這個頁面就是為了這個。 -->
+  <script type="module" src="js/main.js"></script>
 </head>
 <body>
   <header class="top-bar">
@@ -26,7 +50,7 @@
     </div>
   </header>
 
-  <main class="container">
+  <main class="container" id="main-view">
     <h1>劇本殺繁化助手</h1>
     <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 潤飾</p>
 
@@ -39,14 +63,14 @@
 
     <div class="page-layout">
       <div class="sidebar-column">
-        <section class="notice-box">
+        <section class="notice-box card">
           <h2>阿舍老師的叮嚀</h2>
           <p id="ta-notice-text" class="notice-text">載入中…</p>
         </section>
       </div>
 
       <div class="main-column">
-        <section class="usage-box">
+        <section class="usage-box card">
           <h2>今日使用量</h2>
           <div id="usage-list" class="usage-list usage-list--grid">載入中…</div>
 
@@ -62,275 +86,436 @@
           </div>
         </section>
 
-        <div class="columns">
-          <div class="column">
-            <section class="upload-box">
-              <h2>Stage 1：簡轉繁</h2>
+        <!-- 處理流程：三個圓代表三個 Stage，狀態由 js/app/workflow.js 決定
+             （正在執行／等等會執行／這次不會執行／已完成／失敗）。點圓可以
+             跳到對應的 Stage。 -->
+        <nav class="stepper card" id="stepper" aria-label="處理流程">
+          <ol class="stepper__list">
+            <li class="stepper__step" data-stage="1" data-status="idle">
+              <button type="button" class="stepper__jump" data-target="stage1-card">
+                <span class="stepper__dot">1</span>
+                <span class="stepper__label">繁化</span>
+                <span class="stepper__status"></span>
+              </button>
+            </li>
+            <li class="stepper__step" data-stage="2" data-status="idle">
+              <button type="button" class="stepper__jump" data-target="stage2-card">
+                <span class="stepper__dot">2</span>
+                <span class="stepper__label">通用修改</span>
+                <span class="stepper__status"></span>
+              </button>
+            </li>
+            <li class="stepper__step" data-stage="3" data-status="idle">
+              <button type="button" class="stepper__jump" data-target="stage3-card">
+                <span class="stepper__dot">3</span>
+                <span class="stepper__label">校對</span>
+                <span class="stepper__status"></span>
+              </button>
+            </li>
+          </ol>
+        </nav>
 
-              <div id="stage1-form-group">
-                <div class="field">
-                  <label for="file-input">PDF 檔案</label>
-                  <input type="file" id="file-input" accept="application/pdf" />
-                </div>
-
-                <div class="field">
-                  <label for="dpi-input">PDF 轉圖片解析度（DPI）</label>
-                  <input type="number" id="dpi-input" />
-                  <p class="field-help" id="dpi-help"></p>
-                </div>
-
-                <div class="field">
-                  <label for="ocr-threshold-select">OCR門檻值</label>
-                  <select id="ocr-threshold-select">
-                    <option value="0.1">0.1</option>
-                    <option value="0.3" selected>0.3</option>
-                    <option value="0.5">0.5</option>
-                    <option value="0.7">0.7</option>
-                  </select>
-                  <p class="field-help">
-                    辨識文字的門檻值，越低越不會漏字，但有抓到雜訊的風險，若背景壓圖可能需要高門檻值才能抓到字。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="detect-cover-toggle">
-                    <span>偵測首頁是否為封面</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="detect-cover-toggle" checked />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
-                    </span>
-                  </label>
-                  <p class="field-help">
-                    偵測首頁是否為含圖片之封面，若是則移除。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="split-left-right-toggle">
-                    <span>切割左右頁格式</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="split-left-right-toggle" />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
-                    </span>
-                  </label>
-                  <p class="field-help">
-                    若檔案為左右頁格式，將其分割成兩頁，左頁為前一頁，右頁為後一頁。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="preprocess-toggle">
-                    <span>進行前置處理</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="preprocess-toggle" checked />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
-                    </span>
-                  </label>
-                  <p class="field-help">
-                    移除頁碼與標頭，接合斷句，全形標點符號，整理上下引號。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="llm-refine-toggle">
-                    <span>進行LLM潤飾</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="llm-refine-toggle" />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
-                    </span>
-                  </label>
-                  <p class="field-help">
-                    LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model會是直接進行校對時套用的選項。
-                  </p>
-                </div>
-
-                <div class="field" id="model-field">
-                  <label for="model-select">Model</label>
-                  <select id="model-select"></select>
-                  <p class="field-help" id="model-help"></p>
-                </div>
-
-                <div class="field" id="batch-field">
-                  <label for="batch-select">批次頁數</label>
-                  <select id="batch-select">
-                    <option value="5">5 頁</option>
-                    <option value="10">10 頁</option>
-                    <option value="20">20 頁</option>
-                    <option value="30">30 頁</option>
-                    <option value="whole">整本丟（不分批）</option>
-                  </select>
-                  <p class="field-help" id="batch-help"></p>
-                </div>
-
-                <div class="field" id="retry-field">
-                  <label for="retry-input">API 失敗重試次數</label>
-                  <input type="number" id="retry-input" />
-                  <p class="field-help" id="retry-help"></p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="auto-review-toggle">
-                    <span>直接進行校對</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="auto-review-toggle" />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
-                    </span>
-                  </label>
-                  <p class="field-help">
-                    開啟時，Stage 1 完成後會自動帶著結果直接開始 Stage 2 校對，
-                    沿用 Stage 1 用的 model；關閉則維持原本要手動按「開始校對」的流程。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="docx-toggle">
-                    <span>輸出格式</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">txt</span>
-                      <span class="switch">
-                        <input type="checkbox" id="docx-toggle" />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">docx</span>
-                    </span>
-                  </label>
-                </div>
-
-                <button id="submit-btn">上傳並開始繁化</button>
+        <!-- ===== Stage 1：繁化 ===== -->
+        <section class="stage-card card is-collapsed" id="stage1-card" data-stage="1">
+          <button type="button" class="stage-card__header" aria-expanded="false" aria-controls="stage1-body">
+            <span class="stage-card__badge">1</span>
+            <span class="stage-card__title">Stage 1：簡轉繁</span>
+            <span class="stage-card__summary" id="stage1-summary"></span>
+            <span class="stage-card__chevron" aria-hidden="true"></span>
+          </button>
+          <div class="stage-card__body" id="stage1-body">
+            <div class="form-group" id="stage1-form-group">
+              <div class="field">
+                <label for="file-input">PDF 檔案</label>
+                <input type="file" id="file-input" accept="application/pdf" />
               </div>
-            </section>
 
-            <section class="status-box" id="status-box" hidden>
-              <h2>處理進度</h2>
-              <p>狀態：<span id="status-text">-</span></p>
-              <ul id="log-list"></ul>
-              <div class="download-row">
-                <button id="download-btn" disabled>下載繁化結果</button>
-                <button id="start-review-btn" disabled>Stage 2：開始校對</button>
+              <div class="field">
+                <label for="dpi-input">PDF 轉圖片解析度（DPI）</label>
+                <input type="number" id="dpi-input" />
+                <p class="field-help" id="dpi-help"></p>
               </div>
-            </section>
-          </div>
 
-          <div class="column">
-            <section class="review-box" id="review-box">
-              <h2>Stage 2：校對</h2>
-
-              <div class="field direct-upload-field" id="direct-upload-field">
-                <label for="direct-upload-input">直接上傳繁體內容（跳過 Stage 1）</label>
-                <input type="file" id="direct-upload-input" accept=".docx,.txt" />
-                <button id="direct-upload-btn" type="button">直接上傳並解鎖校對</button>
+              <div class="field">
+                <label for="ocr-threshold-select">OCR門檻值</label>
+                <select id="ocr-threshold-select">
+                  <option value="0.1">0.1</option>
+                  <option value="0.3" selected>0.3</option>
+                  <option value="0.5">0.5</option>
+                  <option value="0.7">0.7</option>
+                </select>
                 <p class="field-help">
-                  上傳 Stage 1 可能輸出的 .docx 或 .txt 檔案，不需要先跑 Stage 1
-                  就能直接校對。跑過 Stage 1 之後再直接上傳，畫面上 Stage 1
-                  的結果會被清掉，需要的話請先下載。
+                  辨識文字的門檻值，越低越不會漏字，但有抓到雜訊的風險，若背景壓圖可能需要高門檻值才能抓到字。
                 </p>
               </div>
 
-              <div id="stage2-locked-group">
-                <div class="field">
-                  <label class="switch-row" for="review-preprocess-toggle">
-                    <span>進行前置處理</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">off</span>
-                      <span class="switch">
-                        <input type="checkbox" id="review-preprocess-toggle" disabled />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">on</span>
+              <div class="field">
+                <label class="switch-row" for="detect-cover-toggle">
+                  <span>偵測首頁是否為封面</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="detect-cover-toggle" checked />
+                      <span class="switch-track"></span>
                     </span>
-                  </label>
-                  <p class="field-help">
-                    針對 txt 檔或 docx 檔接合斷句，全形標點符號，整理上下引號。
-                    這部分會直接處理，不會詢問使用者。
-                  </p>
-                </div>
-
-                <div class="field">
-                  <label for="review-model-select">Model</label>
-                  <select id="review-model-select" disabled></select>
-                  <p class="field-help" id="review-model-help"></p>
-                </div>
-
-                <div class="field">
-                  <label for="review-batch-select">批次字數</label>
-                  <!-- 只留 1000/3000：開啟「進行前置處理」時 LLM 要連整理過的
-                       全文一起回傳，輸出量跟輸入量差不多，再大的批次會直接撞到
-                       模型單次輸出上限被截斷。 -->
-                  <select id="review-batch-select" disabled>
-                    <option value="1000">1000 字</option>
-                    <option value="3000">3000 字</option>
-                  </select>
-                  <p class="field-help" id="review-batch-help"></p>
-                </div>
-
-                <div class="field">
-                  <label for="review-retry-input">API 失敗重試次數</label>
-                  <input type="number" id="review-retry-input" disabled />
-                  <p class="field-help" id="review-retry-help"></p>
-                </div>
-
-                <div class="field">
-                  <label class="switch-row" for="review-docx-toggle">
-                    <span>輸出格式</span>
-                    <span class="switch-with-label">
-                      <span class="switch-label-text">txt</span>
-                      <span class="switch">
-                        <input type="checkbox" id="review-docx-toggle" />
-                        <span class="switch-track"></span>
-                      </span>
-                      <span class="switch-label-text">docx</span>
-                    </span>
-                  </label>
-                </div>
-
-                <button id="review-run-btn" disabled>開始校對</button>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">偵測首頁是否為含圖片之封面，若是則移除。</p>
               </div>
 
-              <div id="review-progress" hidden>
-                <p>狀態：<span id="review-status-text">-</span></p>
-                <ul id="review-log-list"></ul>
+              <div class="field">
+                <label class="switch-row" for="split-left-right-toggle">
+                  <span>切割左右頁格式</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="split-left-right-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">若檔案為左右頁格式，將其分割成兩頁，左頁為前一頁，右頁為後一頁。</p>
               </div>
 
-              <div id="review-findings-section" hidden>
-                <div class="findings-toolbar">
-                  <button id="select-all-btn" type="button">全選</button>
-                  <button id="select-none-btn" type="button">全不選</button>
-                  <span id="findings-count" class="field-help"></span>
-                </div>
-                <div class="findings-scroll-wrap">
-                  <ul id="findings-list"></ul>
-                  <div id="findings-scroll-hint" class="scroll-hint" hidden>▾</div>
-                </div>
+              <div class="field">
+                <label class="switch-row" for="preprocess-toggle">
+                  <span>進行前置處理</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="preprocess-toggle" checked />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">移除頁碼與標頭，接合斷句，全形標點符號，整理上下引號。</p>
+              </div>
 
-                <div class="download-row">
-                  <button id="apply-btn" type="button">套用勾選項目</button>
-                  <button id="review-download-btn" type="button" disabled>下載校對後結果</button>
-                  <button id="rerun-btn" type="button" disabled>重新校對（用套用後的文字）</button>
-                </div>
+              <div class="field">
+                <label class="switch-row" for="llm-refine-toggle">
+                  <span>進行LLM潤飾</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="llm-refine-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">
+                  LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model會是接續 Stage 3 校對時套用的選項。
+                </p>
+              </div>
+
+              <div class="field" id="model-field">
+                <label for="model-select">Model</label>
+                <select id="model-select"></select>
+                <p class="field-help" id="model-help"></p>
+              </div>
+
+              <div class="field" id="batch-field">
+                <label for="batch-select">批次頁數</label>
+                <select id="batch-select">
+                  <option value="5">5 頁</option>
+                  <option value="10">10 頁</option>
+                  <option value="20">20 頁</option>
+                  <option value="30">30 頁</option>
+                  <option value="whole">整本丟（不分批）</option>
+                </select>
+                <p class="field-help" id="batch-help"></p>
+              </div>
+
+              <div class="field" id="retry-field">
+                <label for="retry-input">API 失敗重試次數</label>
+                <input type="number" id="retry-input" />
+                <p class="field-help" id="retry-help"></p>
+              </div>
+
+              <div class="field">
+                <label for="stage1-chain-select">完成後接續</label>
+                <select id="stage1-chain-select">
+                  <option value="none">不接續（手動決定下一步）</option>
+                  <option value="stage2">接 Stage 2 通用修改</option>
+                  <option value="stage3">接 Stage 3 校對</option>
+                </select>
+                <p class="field-help">
+                  接下去的 Stage 2 分析報告、Stage 3 校對都沿用這裡選的 Model；其他設定（例如 Stage 2 的「接續 Stage 3 校對」）用各 Stage 自己的。輸出格式跟著前一個 Stage。
+                </p>
+              </div>
+
+              <div class="field">
+                <label class="switch-row" for="docx-toggle">
+                  <span>輸出格式</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">txt</span>
+                    <span class="switch">
+                      <input type="checkbox" id="docx-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">docx</span>
+                  </span>
+                </label>
+              </div>
+
+              <button id="submit-btn">上傳並開始繁化</button>
+            </div>
+
+            <section class="stage-result" id="status-box" hidden>
+              <h3>處理進度</h3>
+              <p>狀態：<span id="status-text">-</span></p>
+              <ul id="log-list" class="log-list"></ul>
+              <div class="download-row">
+                <button id="download-btn" disabled>下載繁化結果</button>
+                <button id="to-stage2-btn" class="button-secondary" disabled>下一步：Stage 2 通用修改</button>
+                <button id="to-stage3-btn" class="button-secondary" disabled>直接 Stage 3 校對</button>
               </div>
             </section>
           </div>
-        </div>
+        </section>
+
+        <!-- ===== Stage 2：通用修改 ===== -->
+        <section class="stage-card card is-collapsed" id="stage2-card" data-stage="2">
+          <button type="button" class="stage-card__header" aria-expanded="false" aria-controls="stage2-body">
+            <span class="stage-card__badge">2</span>
+            <span class="stage-card__title">Stage 2：通用修改</span>
+            <span class="stage-card__summary" id="stage2-summary"></span>
+            <span class="stage-card__chevron" aria-hidden="true"></span>
+          </button>
+          <div class="stage-card__body" id="stage2-body">
+            <div class="field direct-upload-field" id="stage2-upload-field">
+              <label for="stage2-upload-input">直接上傳繁體內容（跳過 Stage 1）</label>
+              <input type="file" id="stage2-upload-input" accept=".docx,.txt" />
+              <button id="stage2-upload-btn" type="button">直接上傳到 Stage 2</button>
+              <p class="field-help">
+                上傳 .docx 或 .txt 檔案，不需要先跑 Stage 1。上傳之後畫面上
+                Stage 1 的結果會被清掉，需要的話請先下載。
+              </p>
+              <p class="field-help source-line" id="stage2-source-line" hidden></p>
+            </div>
+
+            <div class="form-group" id="stage2-form-group">
+              <h3 class="stage-card__subhead">套用範本修改</h3>
+              <p class="field-help">
+                用固定的替換範本修改全文（例如「盡管 → 儘管」），並且把半形標點
+                , ! ? : ; ( ) 轉成全形（半形空格不會動）。這一步是程式直接處理，不呼叫 AI，除了規則改掉的東西，其他一個字都不會動。
+              </p>
+
+              <div class="field">
+                <label class="switch-row" for="pattern-analysis-toggle">
+                  <span>分析報告</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="pattern-analysis-toggle" checked />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">
+                  請 AI 看過每一筆字詞修改，挑出可能改錯或需要人看的地方。只是提醒，不會改動文字；只送修改的那幾段，不送全文。
+                </p>
+              </div>
+
+              <div class="field" id="pattern-model-field">
+                <label for="pattern-model-select">分析報告 Model</label>
+                <select id="pattern-model-select"></select>
+                <p class="field-help field-help--note" id="pattern-model-follow" hidden>這次從 Stage 1 接過來，沿用 Stage 1 選的 Model。</p>
+                <p class="field-help" id="pattern-model-help"></p>
+              </div>
+
+              <div class="field">
+                <label class="switch-row" for="pattern-custom-toggle">
+                  <span>使用個人範本</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="pattern-custom-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">
+                  下載目前的範本、自己增減規則後再選回來，這次開著 App 期間都會用你的範本。個人範本只存在這個畫面裡，關掉 App 或重新整理就沒了，也不會改到預設範本。
+                </p>
+              </div>
+
+              <div class="pattern-custom-panel" id="pattern-custom-panel">
+                <div class="button-row">
+                  <button type="button" id="pattern-template-download-btn" class="button-secondary">下載目前範本</button>
+                  <label class="file-button button-secondary" for="pattern-template-input">選擇個人範本檔案</label>
+                  <input type="file" id="pattern-template-input" accept=".txt,text/plain" class="visually-hidden" />
+                  <button type="button" id="pattern-template-reset-btn" class="button-secondary" hidden>改回預設範本</button>
+                </div>
+                <p class="field-help" id="pattern-template-status"></p>
+                <ul class="issue-list" id="pattern-template-issues" hidden></ul>
+              </div>
+
+              <div class="field">
+                <label class="switch-row" for="pattern-chain-toggle">
+                  <span>接續 Stage 3 校對</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="pattern-chain-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">套用完直接帶著結果開始 Stage 3 校對，不用等分析報告。</p>
+              </div>
+
+              <div class="field">
+                <label class="switch-row" for="pattern-docx-toggle">
+                  <span>輸出格式</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">txt</span>
+                    <span class="switch">
+                      <input type="checkbox" id="pattern-docx-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">docx</span>
+                  </span>
+                </label>
+              </div>
+
+              <button id="pattern-run-btn" disabled>開始套用</button>
+            </div>
+
+            <section class="stage-result" id="pattern-result" hidden>
+              <h3>套用結果</h3>
+              <p>狀態：<span id="pattern-status-text">-</span></p>
+              <p class="pattern-summary" id="pattern-summary"></p>
+              <ul class="issue-list issue-list--warning" id="pattern-warnings" hidden></ul>
+              <div class="download-row">
+                <button id="pattern-download-btn" type="button" disabled>下載套用結果</button>
+                <button id="pattern-report-btn" type="button" disabled>下載報告</button>
+                <button id="pattern-to-stage3-btn" type="button" class="button-secondary" disabled>下一步：Stage 3 校對</button>
+              </div>
+
+              <div class="pattern-analysis" id="pattern-analysis" hidden>
+                <h3>分析報告</h3>
+                <p>狀態：<span id="pattern-analysis-status">-</span></p>
+                <ul id="pattern-analysis-log" class="log-list log-list--short"></ul>
+                <p class="field-help" id="pattern-analysis-count"></p>
+                <ul class="analysis-list" id="pattern-analysis-list"></ul>
+                <button id="pattern-analysis-rerun-btn" type="button" class="button-secondary" hidden>重新分析</button>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <!-- ===== Stage 3：校對 ===== -->
+        <section class="stage-card card is-collapsed" id="stage3-card" data-stage="3">
+          <button type="button" class="stage-card__header" aria-expanded="false" aria-controls="stage3-body">
+            <span class="stage-card__badge">3</span>
+            <span class="stage-card__title">Stage 3：校對</span>
+            <span class="stage-card__summary" id="stage3-summary"></span>
+            <span class="stage-card__chevron" aria-hidden="true"></span>
+          </button>
+          <div class="stage-card__body" id="stage3-body">
+            <div class="field direct-upload-field" id="direct-upload-field">
+              <label for="direct-upload-input">直接上傳繁體內容（跳過 Stage 1、2）</label>
+              <input type="file" id="direct-upload-input" accept=".docx,.txt" />
+              <button id="direct-upload-btn" type="button">直接上傳到 Stage 3</button>
+              <p class="field-help">
+                上傳 .docx 或 .txt 檔案，不需要先跑 Stage 1、2 就能直接校對。上傳之後畫面上
+                Stage 1、2 的結果會被清掉，需要的話請先下載。
+              </p>
+              <p class="field-help source-line" id="stage3-source-line" hidden></p>
+            </div>
+
+            <div class="form-group" id="stage3-form-group">
+              <div class="field">
+                <label class="switch-row" for="review-preprocess-toggle">
+                  <span>進行前置處理</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">off</span>
+                    <span class="switch">
+                      <input type="checkbox" id="review-preprocess-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">on</span>
+                  </span>
+                </label>
+                <p class="field-help">
+                  接合斷句、整理上下引號，直接處理、不會詢問使用者。
+                </p>
+              </div>
+
+              <div class="field">
+                <label for="review-model-select">Model</label>
+                <select id="review-model-select"></select>
+                <p class="field-help field-help--note" id="review-model-follow" hidden>這次從 Stage 1 接過來，沿用 Stage 1 選的 Model。</p>
+                <p class="field-help" id="review-model-help"></p>
+              </div>
+
+              <div class="field">
+                <label for="review-batch-select">批次字數</label>
+                <!-- 只留 1000/3000：開啟「進行前置處理」時 LLM 要連整理過的
+                     全文一起回傳，輸出量跟輸入量差不多，再大的批次會直接撞到
+                     模型單次輸出上限被截斷。 -->
+                <select id="review-batch-select">
+                  <option value="1000">1000 字</option>
+                  <option value="3000">3000 字</option>
+                </select>
+                <p class="field-help" id="review-batch-help"></p>
+              </div>
+
+              <div class="field">
+                <label for="review-retry-input">API 失敗重試次數</label>
+                <input type="number" id="review-retry-input" />
+                <p class="field-help" id="review-retry-help"></p>
+              </div>
+
+              <div class="field">
+                <label class="switch-row" for="review-docx-toggle">
+                  <span>輸出格式</span>
+                  <span class="switch-with-label">
+                    <span class="switch-label-text">txt</span>
+                    <span class="switch">
+                      <input type="checkbox" id="review-docx-toggle" />
+                      <span class="switch-track"></span>
+                    </span>
+                    <span class="switch-label-text">docx</span>
+                  </span>
+                </label>
+              </div>
+
+              <button id="review-run-btn" disabled>開始校對</button>
+            </div>
+
+            <section class="stage-result" id="review-progress" hidden>
+              <h3>處理進度</h3>
+              <p>狀態：<span id="review-status-text">-</span></p>
+              <ul id="review-log-list" class="log-list"></ul>
+            </section>
+
+            <section class="stage-result" id="review-findings-section" hidden>
+              <div class="findings-toolbar">
+                <button id="select-all-btn" type="button">全選</button>
+                <button id="select-none-btn" type="button">全不選</button>
+                <span id="findings-count" class="field-help"></span>
+              </div>
+              <div class="findings-scroll-wrap">
+                <ul id="findings-list"></ul>
+                <div id="findings-scroll-hint" class="scroll-hint" hidden>▾</div>
+              </div>
+
+              <div class="download-row">
+                <button id="apply-btn" type="button">套用勾選項目</button>
+                <button id="review-download-btn" type="button" disabled>下載校對後結果</button>
+                <button id="rerun-btn" type="button" disabled>重新校對（用套用後的文字）</button>
+              </div>
+            </section>
+          </div>
+        </section>
       </div>
     </div>
   </main>
@@ -479,7 +664,5 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-  <script src="script.js"></script>
 </body>
 </html>

@@ -1,0 +1,107 @@
+/* 頂端列：Google 登入按鈕、帳號選單、管理員介面切換鍵。 */
+
+.google-signin-btn {
+  /* 消除容器本身因為包住 inline-block 按鈕而多出來的基準線空白間距。
+     line-height 會被子元素繼承，Google 按鈕自己內部生成的文字（例如
+     「登入」）也會跟著被壓成 line-height: 0、整個文字方塊高度變 0、
+     文字實質上完全看不見（顏色、opacity 都正常，純粹是框高是 0）——
+     下面這條規則把繼承鏈在子元素這層重設回來，只讓最外層容器保留
+     這個空白間距修正，不影響裡面 Google 自己渲染的內容。 */
+  line-height: 0;
+}
+
+.google-signin-btn * {
+  line-height: normal;
+}
+
+.desktop-signin-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-signin-btn:hover {
+  opacity: 0.9;
+}
+
+.admin-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.admin-toggle-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.account-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  max-width: 220px;
+  background: var(--card);
+}
+
+.account-slot:hover {
+  border-color: var(--accent);
+}
+
+.account-slot__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-slot__icon {
+  display: inline-flex;
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+  display: inline-block;
+  width: max-content;
+  box-shadow: var(--card-shadow);
+  z-index: 60;
+}
+
+.account-dropdown__item {
+  display: block;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 0.85rem;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.account-dropdown__item:hover {
+  background: rgba(128, 128, 128, 0.15);
+}

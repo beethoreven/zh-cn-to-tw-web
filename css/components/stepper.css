@@ -1,0 +1,141 @@
+/* 處理流程進度：三個圓用線串起來，每個圓的狀態由 data-status 決定
+   （js/app/stepper.js 設定）：
+   - idle     還沒開始任何工作
+   - planned  等等會執行（這次的流程有它，還沒輪到）
+   - running  正在執行
+   - skipped  這次不會執行（沒有開接續到它）
+   - done     已完成
+   - failed   失敗或被中斷 */
+
+.stepper {
+  padding: 1rem 1.5rem;
+}
+
+.stepper__list {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stepper__step {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* 兩個圓之間的連接線：畫在每一步（第一步除外）的左半邊，從上一個圓的
+   中心連到這個圓的中心 */
+.stepper__step + .stepper__step::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: -50%;
+  right: 50%;
+  height: 2px;
+  background: var(--border);
+}
+
+.stepper__step[data-status="done"] + .stepper__step::before,
+.stepper__step[data-status="running"] + .stepper__step::before {
+  background: var(--accent);
+}
+
+.stepper__jump {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  background: transparent;
+  color: var(--fg);
+  padding: 0 0.5rem;
+  border-radius: var(--radius-control);
+}
+
+.stepper__dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  background: var(--card);
+  border: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.stepper__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.stepper__status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  min-height: 1em;
+}
+
+.stepper__step[data-status="planned"] .stepper__dot {
+  border-style: dashed;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepper__step[data-status="running"] .stepper__dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  animation: stepper-pulse 1.6s ease-out infinite;
+}
+
+.stepper__step[data-status="running"] .stepper__status {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* 只把文字調淡，圓圈本身保持不透明：整個按鈕一起調透明的話，圓圈底色
+   也會變半透明，後面的連接線會透出來 */
+.stepper__step[data-status="skipped"] .stepper__label,
+.stepper__step[data-status="skipped"] .stepper__status {
+  opacity: 0.45;
+}
+
+.stepper__step[data-status="skipped"] .stepper__dot {
+  border-style: dashed;
+  color: var(--border);
+}
+
+.stepper__step[data-status="done"] .stepper__dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.stepper__step[data-status="failed"] .stepper__dot {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.stepper__step[data-status="failed"] .stepper__status {
+  color: var(--danger);
+}
+
+@keyframes stepper-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(138, 51, 36, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgba(138, 51, 36, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepper__step[data-status="running"] .stepper__dot {
+    animation: none;
+  }
+}

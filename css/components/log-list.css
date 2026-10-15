@@ -1,0 +1,28 @@
+/* 處理進度的 log 清單（Stage 1 繁化、Stage 2 分析報告、Stage 3 校對共用）。 */
+
+.log-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.log-list--short {
+  max-height: 160px;
+}
+
+.log-list li {
+  padding: 0.3rem 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.log-list li.warning {
+  color: var(--warning);
+}
+
+.log-list li.error {
+  color: var(--danger);
+}

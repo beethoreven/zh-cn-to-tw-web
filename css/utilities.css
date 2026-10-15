@@ -1,0 +1,26 @@
+/* 最後載入、優先權最高的通用規則。 */
+
+/* hidden 屬性一律真的隱藏。瀏覽器內建的 [hidden]{display:none} 特異度
+   很低，任何 class 規則只要寫了 display（flex/grid/inline-block…）就會
+   蓋過它，JS 設 hidden=true 之後畫面上照樣看得到——1.x 在 .scroll-hint、
+   .account-dropdown、.admin-fields、#stage1-form-group 各撞過一次，每次
+   都是事後在那個 class 上補一條 [hidden] 規則。這裡一次對全部元素生效，
+   之後新增的元件不用再記得補。 */
+[hidden] {
+  display: none !important;
+}
+
+/* 畫面上看不到、但螢幕報讀器與 <label for> 仍然找得到（用在被 label
+   偽裝成按鈕的 <input type="file">）。不能用 display:none——那樣在某些
+   瀏覽器裡 label 點了不會開檔案選擇框。 */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

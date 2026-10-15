@@ -1,0 +1,81 @@
+/* on/off 開關（實際上是包起來的 checkbox，鍵盤與螢幕報讀器都照常可用）。 */
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.switch-with-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.switch-label-text {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 400;
+  width: 2.6rem;
+  flex: 0 0 auto;
+}
+
+.switch-label-text:first-child {
+  text-align: right;
+}
+
+.switch-label-text:last-child {
+  text-align: left;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: var(--border);
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.switch-track::before {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 3px;
+  top: 3px;
+  background: var(--card);
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch-track::before {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
