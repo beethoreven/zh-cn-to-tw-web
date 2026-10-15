@@ -68,7 +68,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 依賴方向固定是 core → auth → app → stages，沒有循環。Stage 之間不互相 import，「做完接下一個」集中在 `app/chain.js`；模組之間用一個很小的事件匯流排（`core/events.js`）溝通。只有 `app/chain.js` 跟 `app/bootstrap.js` 會 import Stage 模組。CSS 依 tokens → base → layout → components → pages → utilities 的順序載入，優先權靠載入順序控制。
 
-**ES module 不能在 `file://` 底下用**：`file://` 頁面的 Origin 是 `"null"`，而 module script 一律走 CORS，會被擋下、整頁什麼都不執行。所以 2.0 換掉 `file://`，改成同樣固定、但有正常來源的網址：Windows 用 WebView2 虛擬主機 `https://zh-cn-to-tw.example`（已完成），Mac 用自訂 scheme `zhcntotw://app`（Mac 那邊依交接報告修改）。來源依然固定，所以登入狀態一樣能跨次啟動保留；但 1.x 升級到 2.0 時來源換了，要重新登入一次。**Mac 殼改好之前，2.0 不能合併進 `main`**，見架設 SOP「Part D」。
+**ES module 不能在 `file://` 底下用**：`file://` 頁面的 Origin 是 `"null"`，而 module script 一律走 CORS，會被擋下、整頁什麼都不執行。所以 2.0 換掉 `file://`，改成同樣固定、但有正常來源的網址：Windows 用 WebView2 虛擬主機 `https://zh-cn-to-tw.example`（已完成），Mac 用自訂 scheme `zhcntotw://app`（`WKURLSchemeHandler` 從 `.app` 裡的 `Resources/web/` 供應檔案，見 meta-repo 的 `docs/handoff/mac-2.0.md`）。來源依然固定，所以登入狀態一樣能跨次啟動保留；但 1.x 升級到 2.0 時來源換了，要重新登入一次。
 
 **語法上限是 Safari 13.0**：Mac 10.15 分流出廠的 Safari 13.0 不支援 `??`、`?.`、`||=`、`replaceAll`、`Array#at`、private fields、top-level await、`Promise.allSettled`、`replaceChildren`。只要有一個模組用到其中一個，那個模組跟 import 它的模組全部不會執行，症狀是整頁「看起來載入了但什麼都沒有」。CSS 也避開 `@layer`、巢狀語法、`inset`。（ES module 本身 Safari 11 就支援。）
 
@@ -167,7 +167,6 @@ js/
 
 ### 已知限制
 
-- **Mac 殼還沒改成 `zhcntotw://app`**：在那之前，2.0 不能合併進 `main`、也不能拿去打 Mac 包（Mac 會用 `file://` 載入，ES module 全部被擋，整頁空白）。
 - 1.x 升級到 2.0 要重新登入一次（網頁來源換了，見「Session 儲存」）。
 - 語法上限是 Safari 13.0，寫新程式碼前先看「2.0：為什麼拆檔、怎麼拆」那一段的清單。
 - `version_check` 的 `os` 參數仍寫死 `macos`，強制更新政策目前對 Windows 不生效。
@@ -200,14 +199,14 @@ http://localhost:8000/?desktop=1&ocrToken=test&apiBase=http://localhost:5001
 ## Part C. 在桌面殼裡測還沒合併的前端
 
 - **Windows，直接跑開發版**：照 `zh-cn-to-tw-windows` README 用 `dotnet run`，搭配 `WEB_BASE_URL_OVERRIDE` 指到 Part A 的本機伺服器。
-- **Windows，打包成安裝檔**：執行打包前先設 `WEB_REPO_OVERRIDE` 指到這份前端的資料夾（例如 2.0 目前在 meta-repo 的 `.web-v2` worktree），見 `zh-cn-to-tw-windows` README「Part D. 打包成安裝檔」。
-- **Mac**：要等 Mac 殼改用 `zhcntotw://app` 之後才能測 2.0。
+- **Windows，打包成安裝檔**：執行打包前先設 `WEB_REPO_OVERRIDE` 指到這份前端的資料夾（例如放在一個 git worktree 裡、還沒合併的分支），見 `zh-cn-to-tw-windows` README「Part D. 打包成安裝檔」。
+- **Mac**：打包前設 `WEB_SRC_DIR` 指到這份前端的資料夾，見 `zh-cn-to-tw-mac` 的 `packaging/build_app_*.sh`。
 
 ## Part D. 部署與合併時機
 
 **`main` 分支不需要、也不會被部署。** Push 到 `main` 只影響兩個桌面殼下次打包時複製到的內容，跟 GitHub Pages 完全無關。
 
-**2.0 合併進 `main` 的時機**：Mac 殼必須先改成用 `zhcntotw://app` 載入（Windows 殼已經改好）。在那之前合併，下一次從 `main` 打的 Mac 包會用 `file://` 載入 2.0，ES module 全部被 CORS 擋下，整個 App 一片空白。合併前確認兩件事：Mac 殼的 2.0 已經用新來源實測過；後端已經部署 Stage 2 的 API（2026-10-15 已部署）。
+**需要殼一起改的前端改動，先放在別的分支**：Mac、Windows 打包都是直接從 `main` 複製網頁，`main` 上的前端必須是兩個殼現在都載得起來的版本。像 2.0 換載入方式這種要殼配合的改動，先在別的分支做（2.0 用的是 `v2` 分支，Windows 用 `WEB_REPO_OVERRIDE`、Mac 用 `WEB_SRC_DIR` 指過去測），兩個殼都改好、測過之後再合併進 `main`。用到新 API 的改動，也要等後端先部署。
 
 ## Part E. 更新 GitHub Pages 上的下載頁（`update-page` 分支）
 
@@ -294,7 +293,7 @@ The single `script.js` was 2,621 lines with all state in global variables; addin
 
 Dependencies always point core → auth → app → stages, with no cycles. Stages never import each other; "when one finishes, start the next" lives in `app/chain.js`, and modules talk through a tiny event bus (`core/events.js`). Only `app/chain.js` and `app/bootstrap.js` import Stage modules. CSS loads in the order tokens → base → layout → components → pages → utilities, and precedence is controlled by that order.
 
-**ES modules cannot be used under `file://`**: a `file://` page's Origin is `"null"`, and module scripts always go through CORS, so they get blocked and nothing on the page runs. So 2.0 replaces `file://` with an address that is just as fixed but has a proper origin: Windows uses a WebView2 virtual host, `https://zh-cn-to-tw.example` (done), and Mac uses a custom scheme, `zhcntotw://app` (the Mac side changes it following a handoff report). The origin is still fixed, so sign-in still survives restarts; but because the origin changes between 1.x and 2.0, upgrading means signing in once more. **Until the Mac shell is changed, 2.0 must not be merged into `main`** — see Setup Guide "Part D".
+**ES modules cannot be used under `file://`**: a `file://` page's Origin is `"null"`, and module scripts always go through CORS, so they get blocked and nothing on the page runs. So 2.0 replaces `file://` with an address that is just as fixed but has a proper origin: Windows uses a WebView2 virtual host, `https://zh-cn-to-tw.example` (done), and Mac uses a custom scheme, `zhcntotw://app` (a `WKURLSchemeHandler` serves the files from `Resources/web/` inside the `.app`; see `docs/handoff/mac-2.0.md` in the meta-repo). The origin is still fixed, so sign-in still survives restarts; but because the origin changes between 1.x and 2.0, upgrading means signing in once more.
 
 **The syntax ceiling is Safari 13.0**: the Safari 13.0 that ships with the Mac 10.15 tier doesn't support `??`, `?.`, `||=`, `replaceAll`, `Array#at`, private fields, top-level await, `Promise.allSettled`, or `replaceChildren`. If any module uses one of them, that module and every module importing it fail to run, and the symptom is a page that "looks loaded but does nothing". CSS likewise avoids `@layer`, nesting, and `inset`. (ES modules themselves are supported from Safari 11.)
 
@@ -393,7 +392,6 @@ No build step — the whole folder is copied straight into the app by both deskt
 
 ### Known Limitations
 
-- **The Mac shell hasn't switched to `zhcntotw://app` yet**: until it does, 2.0 must not be merged into `main` or used for a Mac build (Mac would load it via `file://`, every ES module would be blocked, and the page would be blank).
 - Upgrading from 1.x to 2.0 means signing in once more (the page's origin changed; see "Session Storage").
 - The syntax ceiling is Safari 13.0; check the list in "2.0: Why and How the Files Were Split" before writing new code.
 - `version_check`'s `os` parameter is still hardcoded to `macos`, so the forced-update policy currently doesn't apply to Windows.
@@ -426,14 +424,14 @@ This will attempt the local-OCR path, but since there's no real desktop shell wr
 ## Part C. Testing an Unmerged Frontend Inside a Desktop Shell
 
 - **Windows, running the dev build**: use `dotnet run` per `zh-cn-to-tw-windows`'s README, with `WEB_BASE_URL_OVERRIDE` pointed at Part A's local server.
-- **Windows, packaging an installer**: set `WEB_REPO_OVERRIDE` to this frontend's folder before packaging (for example, 2.0 currently lives in the meta-repo's `.web-v2` worktree); see `zh-cn-to-tw-windows`'s README, "Part D. Packaging an Installer".
-- **Mac**: 2.0 can only be tested once the Mac shell loads from `zhcntotw://app`.
+- **Windows, packaging an installer**: set `WEB_REPO_OVERRIDE` to this frontend's folder before packaging (for example, an unmerged branch checked out in a git worktree); see `zh-cn-to-tw-windows`'s README, "Part D. Packaging an Installer".
+- **Mac**: set `WEB_SRC_DIR` to this frontend's folder before packaging; see `packaging/build_app_*.sh` in `zh-cn-to-tw-mac`.
 
 ## Part D. Deployment and When to Merge
 
 **The `main` branch needs no deployment and never gets one.** Pushing to `main` only affects what the two desktop shells copy in on their next build — it has nothing to do with GitHub Pages.
 
-**When 2.0 can be merged into `main`**: the Mac shell must first be changed to load from `zhcntotw://app` (the Windows shell already is). Merge before that, and the next Mac build from `main` will load 2.0 via `file://`, every ES module will be blocked by CORS, and the whole app will be blank. Before merging, confirm two things: the Mac shell's 2.0 has been tested with the new origin; and the backend has deployed the Stage 2 API (deployed 2026-10-15).
+**Frontend changes that need the shells to change too go on another branch first**: both the Mac and Windows packaging copy the web files straight from `main`, so the frontend on `main` must always be one both shells can currently load. A change that needs the shells' cooperation, like 2.0's new loading method, is built on another branch first (2.0 used the `v2` branch, tested by pointing Windows' `WEB_REPO_OVERRIDE` and Mac's `WEB_SRC_DIR` at it) and merged into `main` only after both shells are changed and tested. Changes that use a new API also wait until the backend has deployed it.
 
 ## Part E. Updating the GitHub Pages Download Page (`update-page` branch)
 
