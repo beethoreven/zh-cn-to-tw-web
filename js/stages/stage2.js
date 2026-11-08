@@ -24,7 +24,9 @@ import {
   getCurrentRun,
   getRunEpoch,
   getRunningStage,
+  getStageStatus,
   registerLock,
+  runSkipsLlm,
   setBackgroundTask,
   setBusy,
   startRun,
@@ -41,6 +43,7 @@ const analysisToggle = byId("pattern-analysis-toggle");
 const modelField = byId("pattern-model-field");
 const modelSelect = byId("pattern-model-select");
 const modelFollowNote = byId("pattern-model-follow");
+const analysisSkipNote = byId("pattern-analysis-skip");
 const customToggle = byId("pattern-custom-toggle");
 const templateDownloadBtn = byId("pattern-template-download-btn");
 const templateInput = byId("pattern-template-input");
@@ -233,7 +236,11 @@ function renderSummary(summary) {
 }
 
 // fromChain：由 Stage 1 完成後自動串接過來（流程已經排好，不用重新開始一次）
-async function runPattern(fromChain) {
+// skipAnalysis：這次從 Stage 1 接過來、而 Stage 1 完全沒用到 LLM，就算「分析
+// 報告」開著也不做（這種流程後面一律不用 LLM，見 workflow.js 的 planFrom）。
+// 由呼叫端帶進來、不在跑完時才去查 workflow：套用完 finishStage 可能已經把
+// 這次的流程清掉了。
+async function runPattern(fromChain, skipAnalysis) {
   if (!source) return;
   // 半路上登出的話，這次的流程整個作廢（見 workflow.js 的 getRunEpoch）
   const epoch = getRunEpoch();
@@ -298,7 +305,7 @@ async function runPattern(fromChain) {
     setStageDetail(2, `規則修改 ${data.summary.rule_hits} 處`);
     setBusy(false);
     finishStage(2, true);
-    if (analysisToggle.checked) startAnalysis();
+    if (analysisToggle.checked && !skipAnalysis) startAnalysis();
     emit("stage2:done", { jobId: resultJobId });
   } catch (e) {
     if (stale()) return;
@@ -423,8 +430,12 @@ function applyLock(s) {
   const customLocked = settingsLocked || !customToggle.checked;
   setDisabled([templateDownloadBtn, templateInput, templateResetBtn], customLocked);
   templateInputLabel.classList.toggle("is-disabled", customLocked);
+  // 這次從 Stage 1 接過來、Stage 1 沒用到 LLM：分析報告這次不做，model 也
+  // 用不到，欄位收起來並標示原因
+  const skipsLlm = runSkipsLlm() && (getStageStatus(2) === "planned" || getStageStatus(2) === "running");
+  analysisSkipNote.hidden = !skipsLlm;
   // 分析報告關掉時不需要選 model，整個欄位收起來
-  modelField.hidden = !analysisToggle.checked;
+  modelField.hidden = !analysisToggle.checked || skipsLlm;
   // 這次流程從 Stage 1 一路接過來：分析報告沿用 Stage 1 的 model，選單直接
   // 顯示那個 model 並鎖住，不讓人以為改這裡有用
   const followsStage1 = usesStage1Model(2);
@@ -484,13 +495,14 @@ export function acceptSource(jobId, label) {
   setSource(jobId, label, "stage1");
 }
 
-// Stage 1 完成後自動串接：設定來源並直接開始套用
+// Stage 1 完成後自動串接：設定來源並直接開始套用。分析報告的 model 與
+// 輸出格式都沿用 Stage 1 的（鎖定規則平常就會同步 model，這裡再明確設一次）
 export function startFromUpstream(jobId, label, options) {
   clearAll();
   setSource(jobId, label, "stage1");
-  // 分析報告沿用 Stage 1 的 model（鎖定規則平常就會同步，這裡再明確設一次）
-  if (options && options.model) modelPicker.trySelect(options.model);
-  runPattern(true);
+  if (options.model) modelPicker.trySelect(options.model);
+  docxToggle.checked = !!options.docx;
+  runPattern(true, !!options.skipAnalysis);
 }
 
 export function initStage2() {
@@ -514,7 +526,7 @@ export function initStage2() {
   });
 
   uploadBtn.addEventListener("click", directUpload);
-  runBtn.addEventListener("click", () => runPattern(false));
+  runBtn.addEventListener("click", () => runPattern(false, false));
   downloadBtn.addEventListener("click", async () => {
     if (!resultJobId) return;
     const format = docxToggle.checked ? "docx" : "txt";

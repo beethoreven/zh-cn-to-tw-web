@@ -76,7 +76,7 @@ export function isWorkInProgress() {
 // failed（失敗或中斷）。
 
 const stageStatus = { 1: "idle", 2: "idle", 3: "idle" };
-let currentRun = null; // { origin, stage1Model, stage1Docx }
+let currentRun = null; // { origin, stage1Model, stage1UsesLlm }
 
 export function getStageStatus(stage) {
   return stageStatus[stage];
@@ -104,6 +104,14 @@ export function usesStage1Model(stage) {
   return !!currentRun && currentRun.origin === 1 && (status === "planned" || status === "running");
 }
 
+// 這次流程從 Stage 1 開始，而且 Stage 1 完全沒有用到 LLM（「進行前置處理」
+// 與「進行LLM潤飾」都關）。這種流程後面一律不用 LLM：只會接 Stage 2，而且
+// Stage 2 不做分析報告、不接 Stage 3（見 planFrom）。在 Stage 1 開始時就記下
+// 來，不看事後畫面上的開關。
+export function runSkipsLlm() {
+  return !!currentRun && currentRun.origin === 1 && currentRun.stage1UsesLlm === false;
+}
+
 function setStatus(stage, status) {
   if (stageStatus[stage] === status) return;
   stageStatus[stage] = status;
@@ -112,15 +120,25 @@ function setStatus(stage, status) {
   refreshLockStates();
 }
 
-// 依目前畫面上的接續設定，算出從 origin 開始這次會跑哪些 Stage
+// 依目前畫面上的接續設定，算出從 origin 開始這次會跑哪些 Stage。
+// 這是「接下去要跑哪個 Stage」唯一的依據：js/app/chain.js 看的是這裡排出來
+// 的 planned，不自己再判斷一次開關，兩邊規則才不會兜不攏。
+//
+// Stage 1 的「完成後自動接續執行」：
+// - stage2：接 Stage 2；Stage 2 的「接續 Stage 3 校對」開著就再接 Stage 3
+// - stage3：跳過 Stage 2，直接接 Stage 3
+// - all：一路執行完所有 Stage（1 → 2 → 3），不看 Stage 2 自己的接續開關
+// Stage 1 沒有用到 LLM 的流程後面一律不用 LLM：只接 Stage 2、不接 Stage 3
+// （畫面上的選單此時也只能選「不接續／接 Stage 2」，見 stage1.js）。
 function planFrom(origin) {
   const chain1 = byId("stage1-chain-select").value;
   const chain2 = byId("pattern-chain-toggle").checked;
   const plan = [origin];
   if (origin === 1) {
-    if (chain1 === "stage2") {
+    const noLlm = runSkipsLlm();
+    if (chain1 === "stage2" || chain1 === "all" || (noLlm && chain1 === "stage3")) {
       plan.push(2);
-      if (chain2) plan.push(3);
+      if (!noLlm && (chain1 === "all" || chain2)) plan.push(3);
     } else if (chain1 === "stage3") {
       plan.push(3);
     }

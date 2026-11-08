@@ -207,7 +207,7 @@
                   </span>
                 </label>
                 <p class="field-help">
-                  LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model會是接續 Stage 3 校對時套用的選項。
+                  LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model仍會用在前置處理，以及接續的 Stage 2 分析報告、Stage 3 校對。
                 </p>
               </div>
 
@@ -236,14 +236,15 @@
               </div>
 
               <div class="field">
-                <label for="stage1-chain-select">完成後接續</label>
+                <label for="stage1-chain-select">完成後自動接續執行</label>
                 <select id="stage1-chain-select">
                   <option value="none">不接續（手動決定下一步）</option>
                   <option value="stage2">接 Stage 2 通用修改</option>
                   <option value="stage3">接 Stage 3 校對</option>
+                  <option value="all">一路執行完所有 Stage</option>
                 </select>
                 <p class="field-help">
-                  接下去的 Stage 2 分析報告、Stage 3 校對都沿用這裡選的 Model；其他設定（例如 Stage 2 的「接續 Stage 3 校對」）用各 Stage 自己的。輸出格式跟著前一個 Stage。
+                  接下去的 Stage 2 分析報告、Stage 3 校對都沿用這裡選的 Model，輸出格式也沿用這裡的設定。「一路執行完所有 Stage」會依序跑完 Stage 2、Stage 3，不看 Stage 2 的「接續 Stage 3 校對」開關。「進行前置處理」與「進行LLM潤飾」都關閉時，只能接 Stage 2，而且不做分析報告。
                 </p>
               </div>
 
@@ -319,6 +320,7 @@
                 <p class="field-help">
                   請 AI 看過每一筆字詞修改，挑出可能改錯或需要人看的地方。只是提醒，不會改動文字；只送修改的那幾段，不送全文。
                 </p>
+                <p class="field-help field-help--note" id="pattern-analysis-skip" hidden>這次從 Stage 1 接過來，Stage 1 沒有使用 LLM，不做分析報告。</p>
               </div>
 
               <div class="field" id="pattern-model-field">

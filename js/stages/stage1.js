@@ -50,8 +50,6 @@ const retryField = byId("retry-field");
 const dpiInput = byId("dpi-input");
 const dpiHelp = byId("dpi-help");
 const ocrThresholdSelect = byId("ocr-threshold-select");
-const patternChainToggle = byId("pattern-chain-toggle");
-const patternAnalysisToggle = byId("pattern-analysis-toggle");
 
 const modelPicker = createModelPicker(modelSelect, byId("model-help"));
 
@@ -98,35 +96,52 @@ export async function loadStage1Options() {
   dpiHelp.textContent = opts.dpi.description;
 }
 
-// 批次頁數 / API 失敗重試次數，只有這次真的會呼叫 LLM 才有意義：「進行
-// 前置處理」與「進行LLM潤飾」兩個都關，Stage 1 就全程只做 OpenCC 簡轉繁。
+// 這次 Stage 1 會不會呼叫 LLM：「進行前置處理」與「進行LLM潤飾」兩個都關，
+// Stage 1 就全程只做 OpenCC 簡轉繁。
+function stage1UsesLlm() {
+  return llmRefineToggle.checked || preprocessToggle.checked;
+}
+
+// 會接到 Stage 3（需要 LLM）的接續選項
+const LLM_ONLY_CHAINS = ["stage3", "all"];
+
+// 依「這次會不會呼叫 LLM」調整相關欄位。
 //
-// Model 欄位再多一層：即使上面兩個都關掉，只要這次接下去的 Stage 會用到
-// LLM——Stage 2 的分析報告（有開的話）、Stage 3 校對——它們都會沿用這裡選的
-// model（見 js/app/chain.js），所以 Model 要「不呼叫 LLM」而且「後面也沒有
-// Stage 會用到」才真的沒有作用。
+// 批次頁數 / API 失敗重試次數、Model：只有 Stage 1 真的會呼叫 LLM 才有意義。
+// Model 原本還要看「接下去的 Stage 會不會用到」，2.1 起規則改成 Stage 1 沒用
+// LLM 的流程後面一律不用 LLM（只接 Stage 2、不做分析報告、不接 Stage 3，見
+// js/app/workflow.js 的 planFrom），所以 Stage 1 不呼叫 LLM，Model 就一定沒作用。
+//
+// 「完成後自動接續執行」：Stage 1 沒用 LLM 時只能選「不接續／接 Stage 2」，
+// 原本選「接 Stage 3」或「一路執行完」的改成「接 Stage 2」（照樣自動往下接，
+// 只是接不到需要 LLM 的 Stage 3）。
 //
 // 這個鎖定跟整組的鎖定（跑中/未選案）是疊加關係，不是互斥——整組已經鎖住
 // 時，這裡不需要、也不會把它解開。
 function updateLlmDependentLock() {
-  const noLlmCall = !llmRefineToggle.checked && !preprocessToggle.checked;
-  const laterStageUsesModel =
-    chainSelect.value === "stage3" ||
-    (chainSelect.value === "stage2" && (patternAnalysisToggle.checked || patternChainToggle.checked));
+  const noLlmCall = !stage1UsesLlm();
   const baseLocked = formGroup.classList.contains("locked");
 
-  const modelLocked = noLlmCall && !laterStageUsesModel;
-  modelField.classList.toggle("locked", modelLocked);
-  modelSelect.disabled = baseLocked || modelLocked;
+  modelField.classList.toggle("locked", noLlmCall);
+  modelSelect.disabled = baseLocked || noLlmCall;
 
   [batchField, retryField].forEach((el) => el.classList.toggle("locked", noLlmCall));
   [batchSelect, retryInput].forEach((el) => {
     el.disabled = baseLocked || noLlmCall;
   });
+
+  Array.prototype.forEach.call(chainSelect.options, (option) => {
+    if (LLM_ONLY_CHAINS.indexOf(option.value) >= 0) option.disabled = noLlmCall;
+  });
+  if (noLlmCall && LLM_ONLY_CHAINS.indexOf(chainSelect.value) >= 0) {
+    chainSelect.value = "stage2";
+    // 讓流程進度條等依賴這個選單的地方一起更新（見 workflow.js 的 refreshPlan）
+    chainSelect.dispatchEvent(new Event("change"));
+  }
 }
 
 // 「一次只做一件事」：有任何 Stage 在跑時整組鎖住。唯一的例外是「完成後
-// 接續」——Stage 1 自己在跑的時候還可以改（使用者跑到一半才決定要不要
+// 自動接續執行」——Stage 1 自己在跑的時候還可以改（使用者跑到一半才決定要不要
 // 接下去，這個設定只影響之後的事）。
 function applyLock(s) {
   const locked = s.busy || !s.projectConfirmed;
@@ -279,7 +294,7 @@ async function submit() {
   clearResult();
   state.hasDownloaded = false;
   setBusy(true);
-  startRun(1, { stage1Model: modelSelect.value }, false);
+  startRun(1, { stage1Model: modelSelect.value, stage1UsesLlm: stage1UsesLlm() }, false);
   statusBox.hidden = false;
   statusText.textContent = "上傳中";
 
@@ -340,9 +355,7 @@ async function submit() {
 
 export function initStage1() {
   registerLock(applyLock);
-  [preprocessToggle, llmRefineToggle, chainSelect, patternChainToggle, patternAnalysisToggle].forEach((el) =>
-    el.addEventListener("change", updateLlmDependentLock)
-  );
+  [preprocessToggle, llmRefineToggle].forEach((el) => el.addEventListener("change", updateLlmDependentLock));
 
   submitBtn.addEventListener("click", submit);
   downloadBtn.addEventListener("click", async () => {
