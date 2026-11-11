@@ -16,6 +16,7 @@ import { refreshUsageAfterStage } from "../app/usage.js";
 import {
   finishStage,
   getRunEpoch,
+  isRunActive,
   getRunningStage,
   refreshLockStates,
   registerLock,
@@ -144,7 +145,8 @@ function updateLlmDependentLock() {
 // 自動接續執行」——Stage 1 自己在跑的時候還可以改（使用者跑到一半才決定要不要
 // 接下去，這個設定只影響之後的事）。
 function applyLock(s) {
-  const locked = s.busy || !s.projectConfirmed;
+  // 用 isRunActive 不只看 busy：Stage 之間交接的空檔也要鎖（見 workflow.js）
+  const locked = isRunActive() || !s.projectConfirmed;
   formGroup.classList.toggle("locked", locked);
   setDisabled(
     [

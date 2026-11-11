@@ -11,9 +11,11 @@
 // 不是全域的，一定要經過下面的 exposeToShell 掛上去，否則殼呼叫時只會得到
 // ReferenceError，而且畫面上什麼都不會發生。目前殼會呼叫的：
 // - handleCredentialResponse({credential})：系統瀏覽器登入完成（兩個殼都有）
+// - window.__desktopSignInFailed(reason)：系統瀏覽器登入失敗（兩個殼都有）
 // - showToast(message, type)：下載完成／失敗提示（Mac 殼）
 // - window.__attemptAutoSaveBeforeSleep()：系統即將睡眠前搶救未下載的結果（Mac 殼）
-// - window.__visionOcrProgress(payload)：10.15 分流的 Vision OCR 進度（Mac 10.15）
+// - window.__visionOcrProgress(payload)：10.15 分流的本機 OCR 進度（Mac 10.15；
+//   名字裡的 vision 是當初用 Apple Vision framework 留下的，現在殼內嵌的是 Tesseract）
 // 另外殼會直接寫入 window.__OCR_PORT__（本機 OCR 服務目前的 port）。
 // 新增或改名任何一個，兩個殼的程式都要跟著改。
 

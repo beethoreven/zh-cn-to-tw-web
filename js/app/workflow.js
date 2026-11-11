@@ -70,6 +70,17 @@ export function isWorkInProgress() {
   return state.busy || backgroundTasks.size > 0 || currentRun !== null;
 }
 
+// 各 Stage「開始」類按鈕該不該鎖：某個 Stage 正在跑，或這次流程還有排定
+// 要接續的 Stage。後半段是為了 Stage 之間交接的空檔：前一個 Stage 做完會先
+// setBusy(false)，下一個 Stage 要先 await 版本檢查（一次網路請求）才
+// setBusy(true)，只看 busy 的話這段空檔按鈕是解鎖的，使用者按下別的
+// Stage 開始，接續的 Stage 回來後照樣 advanceRun，就會有兩個 Stage 同時
+// 是 running。跟 isWorkInProgress 的差別是不算背景分析報告：分析報告刻意
+// 不鎖畫面（見 setBackgroundTask）。
+export function isRunActive() {
+  return state.busy || currentRun !== null;
+}
+
 // ===== 這次的流程（流程進度條） =====
 // 每個 Stage 的狀態：idle（還沒開始任何工作）、planned（等等會執行）、
 // running（正在執行）、skipped（這次不會執行）、done（已完成）、

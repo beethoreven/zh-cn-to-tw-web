@@ -19,6 +19,7 @@ import {
   getCurrentRun,
   getRunEpoch,
   getRunningStage,
+  isRunActive,
   registerLock,
   setBusy,
   startRun,
@@ -312,7 +313,8 @@ function applyLock(s) {
   modelSelect.disabled = settingsLocked || followsStage1;
   modelFollowNote.hidden = !followsStage1;
 
-  const actionLocked = s.busy || !s.projectConfirmed;
+  // 用 isRunActive 不只看 busy：Stage 之間交接的空檔也要鎖（見 workflow.js）
+  const actionLocked = isRunActive() || !s.projectConfirmed;
   runBtn.disabled = actionLocked || !source;
   uploadField.classList.toggle("locked", actionLocked);
   uploadInput.disabled = actionLocked;

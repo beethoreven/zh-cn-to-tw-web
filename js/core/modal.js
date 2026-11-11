@@ -56,3 +56,40 @@ export function showInterruptedDialog(options) {
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 }
+
+// 工作進行中登入過期、而系統瀏覽器那邊的重新登入沒有完成（逾時、分頁被
+// 關掉、本機 port 被占用）時的對話窗。等待中的請求刻意繼續等，工作進度
+// 不會被當成失敗；這個對話窗是「等待重新登入」這個狀態唯一的出口按鈕，
+// 少了它就只剩整頁重新整理（見 js/core/api.js）。回傳關閉函式。
+export function showReauthFailedDialog(options) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = "重新登入沒有完成";
+  box.appendChild(title);
+
+  const desc = document.createElement("p");
+  desc.textContent = `登入已過期，系統瀏覽器那邊的登入沒有完成（${options.reason}）。目前的工作進度還在，重新登入後會自動接續。`;
+  box.appendChild(desc);
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+
+  const retryBtn = document.createElement("button");
+  retryBtn.type = "button";
+  retryBtn.textContent = "重新登入";
+  retryBtn.addEventListener("click", () => {
+    overlay.remove();
+    options.onRetry();
+  });
+  actions.appendChild(retryBtn);
+
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  return () => overlay.remove();
+}

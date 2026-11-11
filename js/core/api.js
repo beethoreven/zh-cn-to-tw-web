@@ -10,6 +10,7 @@
 
 import { DESKTOP_MODE, SESSION_TOKEN_STORAGE_KEY } from "./config.js";
 import { postToShell } from "./bridge.js";
+import { showReauthFailedDialog } from "./modal.js";
 import { showToast } from "./toast.js";
 
 let sessionToken = localStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
@@ -79,9 +80,46 @@ function waitForReauth() {
 // 任何 401 也不會再觸發新的一次重新登入，使用者只能整頁重新整理才能恢復。
 export function settleReauthWaiters() {
   reauthInFlight = false;
+  closeReauthFailedDialog();
   const resolvers = reauthResolvers;
   reauthResolvers = [];
   resolvers.forEach((resolve) => resolve());
+}
+
+// 桌面殼的系統瀏覽器登入失敗（逾時、分頁被關掉、本機 port 被占用）時，
+// 殼會呼叫這支（經 window.__desktopSignInFailed，見 js/auth/login.js）。
+//
+// 重新登入的狀態：閒置 →（撞到 401）等待中 →（殼交回 token）放行。原本
+// 殼在失敗時只跳 alert、不通知網頁，「等待中」就沒有任何出口：
+// reauthInFlight 永遠是 true，所有輪詢每一輪都跳過，之後的 401 也不會再
+// 觸發登入，畫面停在「執行中」直到整頁重新整理。
+//
+// 失敗時刻意不放行等待中的請求：放行的話它們會拿舊 token 重打、拿到 401，
+// 呼叫端只會把它當成「找不到這個處理進度」，把明明還在跑的工作標成失敗。
+// 改成留在「等待中」，給一顆「重新登入」按鈕讓使用者自己決定何時再試。
+// 不在重新登入流程中（沒登入時按登入鈕失敗）就維持原本的提示。
+let closeReauthDialog = null;
+
+function closeReauthFailedDialog() {
+  if (closeReauthDialog) {
+    closeReauthDialog();
+    closeReauthDialog = null;
+  }
+}
+
+export function handleDesktopSignInFailed(reason) {
+  if (!reauthInFlight) {
+    alert(`登入失敗，請重試（${reason}）`);
+    return;
+  }
+  closeReauthFailedDialog();
+  closeReauthDialog = showReauthFailedDialog({
+    reason,
+    onRetry: () => {
+      closeReauthDialog = null;
+      triggerReauth();
+    },
+  });
 }
 
 // 除了不需要登入的端點（/api/health、/api/ta-notice、/auth/*）以外，所有

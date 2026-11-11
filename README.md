@@ -23,7 +23,7 @@ Vanilla JavaScript（無框架、無建置流程），被桌面殼內嵌載入�
 - **Stage 2 通用修改（2.0 新增）**：套用範本修改——後端用程式把半形標點轉全形、套用「修改前 → 修改後」的替換範本（半形空格一律不動），產出修改報告；可選擇請 LLM 看過字詞類的修改、提醒可能改錯的地方（只提醒、不改字）。
 - **Stage 3 校對**：LLM 挑出錯字／用詞問題，使用者勾選要套用的建議。
 
-判斷現在是不是桌面殼載入的，靠網址的查詢參數：桌面殼載入頁面時會帶 `?desktop=1&ocrToken=<隨機值>&apiBase=<Render網址>&appMajor=..&appMinor=..&osTier=..`，`js/core/config.js` 一開始就讀這些參數。有 `desktop=1` 時 Stage 1 的 PDF 先送本機的 `zh-cn-to-tw-ocr-service`（Mac 10.15 分流改用 Apple Vision）做 OCR，OCR 完的文字才送 Render 後端。沒有這些參數（純瀏覽器打開）時，按 Stage 1 只會提示要改用桌面版、不會送出任何請求；Stage 2、Stage 3 用直接上傳的 .docx/.txt 不需要 OCR，照樣能用。
+判斷現在是不是桌面殼載入的，靠網址的查詢參數：桌面殼載入頁面時會帶 `?desktop=1&ocrToken=<隨機值>&apiBase=<Render網址>&appMajor=..&appMinor=..&osTier=..`，`js/core/config.js` 一開始就讀這些參數。有 `desktop=1` 時 Stage 1 的 PDF 先送本機的 `zh-cn-to-tw-ocr-service`（Mac 10.15 分流改用殼內嵌的 Tesseract）做 OCR，OCR 完的文字才送 Render 後端。沒有這些參數（純瀏覽器打開）時，按 Stage 1 只會提示要改用桌面版、不會送出任何請求；Stage 2、Stage 3 用直接上傳的 .docx/.txt 不需要 OCR，照樣能用。
 
 ### 系統架構
 
@@ -112,7 +112,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 `force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。純瀏覽器開啟（沒有 `desktop=1`）完全不會觸發這個檢查，瀏覽器版沒有「App 版本」這個概念。
 
-網址上還會多帶一個 `osTier`（Mac 是 `"11+"` 或 `"10.15"`，省略當 `"11+"`；Windows 是 `"windows"`）——Mac 桌面殼分成兩個獨立版控的 build，`10.15` 那包（部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 改用 Apple 原生 Vision framework 做 OCR，不透過 `zh-cn-to-tw-ocr-service`。這個值決定：
+網址上還會多帶一個 `osTier`（Mac 是 `"11+"` 或 `"10.15"`，省略當 `"11+"`；Windows 是 `"windows"`）——Mac 桌面殼分成兩個獨立版控的 build，`10.15` 那包（部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 改用殼內嵌的 Tesseract 做 OCR，不透過 `zh-cn-to-tw-ocr-service`。這個值決定：
 
 - **`checkVersionOrBlock()` 打 `version_check` 時帶哪個分流**：`os_version` 查詢參數直接帶這個值，後端 `app_versions` 表按 `(os, os_version)` 分開存各分流的門檻（見 `zh-cn-to-tw-backend` README「版本檢查」）。`os` 參數目前寫死 `macos`，Windows 靠 `osTier=windows` 在表裡查無資料而不受擋（見 `zh-cn-to-tw-windows` README）。
 - **本機 OCR 走哪條路**：`js/stages/ocr.js` 的 `runLocalOcr()` 是 Stage 1 唯一的入口；一般走 HTTP 輪詢（`ensureDesktopOcrReady()`/`pollLocalOcrJob()`，對本機的 `zh-cn-to-tw-ocr-service`），`osTier === "10.15"` 改走 `visionOcr` channel（見下方「10.15 分流的本機 OCR」）。
@@ -123,7 +123,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 一般的本機 OCR（`ensureDesktopOcrReady()` 拉起 `zh-cn-to-tw-ocr-service` subprocess，`fetch` 打它的 `/ocr/pdf/start`、輪詢 `/ocr/pdf/status/<job_id>`）在 `10.15` 分流用不了——那支 Python service 依賴的 onnxruntime 編譯二進位檔 `minos` 寫死 11.0，10.15 上跑不動（見 `zh-cn-to-tw-mac` README「版本分流」）。`10.15` 分流改用 `runVisionOcrJob()`：
 
 1. 用 `FileReader.readAsDataURL` 把 PDF 讀成 base64，交給殼的 `visionOcr` channel，帶 `jobId`/`pdfBase64`/`dpi`/`detectCover`。
-2. 殼那邊用 Apple 原生 Vision framework（`VNRecognizeTextRequest`）在同一個 process 裡處理（見 `zh-cn-to-tw-mac` 的 `VisionOCRManager.swift`），沒有 subprocess，也就不需要 `ensureDesktopOcrReady()`/`releaseDesktopOcr()` 那套「用到才開、用完就關」的機制。
+2. 殼那邊用內嵌的 Tesseract 處理（見 `zh-cn-to-tw-mac` 的 `TesseractOCRManager.swift`），每一頁跑一次命令列、跑完就結束，沒有常駐的 subprocess，也就不需要 `ensureDesktopOcrReady()`/`releaseDesktopOcr()` 那套「用到才開、用完就關」的機制。2.0（含）以前用的是 Apple Vision framework，但 10.15 的 Vision 只認得英文，中文會被辨識成英文字母，所以換掉（細節見 `zh-cn-to-tw-mac` README「10.15 的 OCR 為什麼是 Tesseract」）；`visionOcr`、`runVisionOcrJob`、`useVision` 這些名稱是當時留下的，沒有改。
 3. 進度／結果透過殼呼叫 `window.__visionOcrProgress(payload)` 推播回來，`payload` 的欄位形狀（`phase`/`currentPage`/`totalPages`/`logs`/`status`/`pages`/`error`）刻意跟 `zh-cn-to-tw-ocr-service` 的 job 狀態對齊，兩條路共用同一套進度顯示（Stage 1 傳進來的 `onStatus`/`onLogs`）。
 4. 兩條路最後都只交出 OCR 完的頁面文字，Stage 1「本機 OCR 完成後 POST 去 `/api/jobs/from-ocr-text`」那段程式碼完全共用，不用分兩套邏輯。
 
@@ -248,7 +248,7 @@ Processing runs in three Stages (from 2.0; 1.x had two, and 1.x's Stage 2 is tod
 - **Stage 2 General Edits (new in 2.0)**: Apply Template — the backend, in plain code, converts half-width punctuation to full-width and applies a "before → after" replacement template (half-width spaces are never touched), and produces an edit report; optionally, an LLM looks over the word-level edits and flags ones that may be wrong (it only flags; it never changes text).
 - **Stage 3 Proofread**: an LLM picks out typos/wording problems, and the user ticks the suggestions to apply.
 
-Whether the page was loaded by a desktop shell is determined from URL query parameters: the shell loads the page with `?desktop=1&ocrToken=<random>&apiBase=<Render URL>&appMajor=..&appMinor=..&osTier=..`, and `js/core/config.js` reads these at startup. With `desktop=1`, Stage 1 first sends the PDF to the local `zh-cn-to-tw-ocr-service` (Apple Vision on the Mac 10.15 tier) for OCR, and only the resulting text goes to the Render backend. Without those parameters (a plain browser), pressing Stage 1 only shows a notice to use the desktop app and sends no request; Stage 2 and Stage 3 need no OCR and still work with a directly-uploaded .docx/.txt.
+Whether the page was loaded by a desktop shell is determined from URL query parameters: the shell loads the page with `?desktop=1&ocrToken=<random>&apiBase=<Render URL>&appMajor=..&appMinor=..&osTier=..`, and `js/core/config.js` reads these at startup. With `desktop=1`, Stage 1 first sends the PDF to the local `zh-cn-to-tw-ocr-service` (a shell-bundled Tesseract on the Mac 10.15 tier) for OCR, and only the resulting text goes to the Render backend. Without those parameters (a plain browser), pressing Stage 1 only shows a notice to use the desktop app and sends no request; Stage 2 and Stage 3 need no OCR and still work with a directly-uploaded .docx/.txt.
 
 ### System Architecture
 
@@ -337,7 +337,7 @@ When a desktop shell loads the page, the URL carries `appMajor`/`appMinor` along
 
 If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. Plain browser opens (no `desktop=1`) never trigger this check at all — the browser build has no concept of an "app version."
 
-The URL also carries `osTier` (on Mac `"11+"` or `"10.15"`, defaulting to `"11+"` if absent; on Windows `"windows"`) — the Mac shell ships as two independently-versioned builds, and the `10.15` one (deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") does Stage 1 OCR natively via Apple's Vision framework instead of `zh-cn-to-tw-ocr-service`. This value drives:
+The URL also carries `osTier` (on Mac `"11+"` or `"10.15"`, defaulting to `"11+"` if absent; on Windows `"windows"`) — the Mac shell ships as two independently-versioned builds, and the `10.15` one (deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") does Stage 1 OCR with a shell-bundled Tesseract instead of `zh-cn-to-tw-ocr-service`. This value drives:
 
 - **Which tier `checkVersionOrBlock()` queries**: passed straight through as the `os_version` query parameter — the backend's `app_versions` table keys its thresholds by `(os, os_version)`, one row per tier (see `zh-cn-to-tw-backend`'s README, "Version Check"). The `os` parameter is still hardcoded to `macos`; Windows escapes blocking because `osTier=windows` has no row in the table (see `zh-cn-to-tw-windows`'s README).
 - **Which local-OCR path is used**: `runLocalOcr()` in `js/stages/ocr.js` is Stage 1's single entry point; normally it uses HTTP polling (`ensureDesktopOcrReady()`/`pollLocalOcrJob()`, talking to the local `zh-cn-to-tw-ocr-service`), and with `osTier === "10.15"` it uses the `visionOcr` channel instead (see "Local OCR on the 10.15 Tier" below).
@@ -348,7 +348,7 @@ The URL also carries `osTier` (on Mac `"11+"` or `"10.15"`, defaulting to `"11+"
 The normal local-OCR path (`ensureDesktopOcrReady()` launches the `zh-cn-to-tw-ocr-service` subprocess, `fetch`es its `/ocr/pdf/start`, polls `/ocr/pdf/status/<job_id>`) doesn't work on the `10.15` tier — that Python service's onnxruntime dependency has its `minos` hardcoded to 11.0 in the compiled binary, so it can't run on 10.15 (see `zh-cn-to-tw-mac`'s README, "Version Tiers"). The `10.15` tier uses `runVisionOcrJob()` instead:
 
 1. Reads the PDF as base64 via `FileReader.readAsDataURL`, then hands it to the shell's `visionOcr` channel, carrying `jobId`/`pdfBase64`/`dpi`/`detectCover`.
-2. The shell processes it natively, in-process, via Apple's Vision framework (`VNRecognizeTextRequest`) — see `VisionOCRManager.swift` in `zh-cn-to-tw-mac`. No subprocess means no need for the `ensureDesktopOcrReady()`/`releaseDesktopOcr()` "launch on demand, release when done" dance.
+2. The shell processes it with a bundled Tesseract — see `TesseractOCRManager.swift` in `zh-cn-to-tw-mac`. It runs the command line once per page and exits; with no long-lived subprocess, there's no need for the `ensureDesktopOcrReady()`/`releaseDesktopOcr()` "launch on demand, release when done" dance. Up to and including 2.0 it used Apple's Vision framework, but 10.15's Vision only recognizes English, turning Chinese into Latin letters, so it was replaced (details in `zh-cn-to-tw-mac`'s README, "Why 10.15 OCR uses Tesseract"); the names `visionOcr`, `runVisionOcrJob` and `useVision` are left over from that era and weren't renamed.
 3. Progress and results come back through the shell calling `window.__visionOcrProgress(payload)` — `payload`'s shape (`phase`/`currentPage`/`totalPages`/`logs`/`status`/`pages`/`error`) is deliberately aligned with `zh-cn-to-tw-ocr-service`'s job state, so both paths share the same progress display (the `onStatus`/`onLogs` hooks Stage 1 passes in).
 4. Both paths end by handing over only the OCR'd page text, so the "POST the OCR'd pages to `/api/jobs/from-ocr-text`" step of the Stage 1 submit flow is shared code between both paths, not two separate implementations.
 

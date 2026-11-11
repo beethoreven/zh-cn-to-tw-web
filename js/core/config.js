@@ -41,7 +41,7 @@ export const DESKTOP_OCR_TOKEN = params.get("ocrToken") || "";
 export const DESKTOP_APP_MAJOR = Number(paramOr("appMajor", "0"));
 export const DESKTOP_APP_MINOR = Number(paramOr("appMinor", "0"));
 // 這包桌面殼屬於哪一個版控分流："11+" 是 Mac 主線版，"10.15" 是部署目標
-// 壓到 10.15 的分流（Stage 1 改用 Apple Vision framework 做 OCR，下載也要
+// 壓到 10.15 的分流（Stage 1 改用殼內嵌的 Tesseract 做 OCR，下載也要
 // 走 legacyDownload，見 js/core/download.js），"windows" 是 Windows 版（刻意
 // 用後端政策表裡不存在的值，見 known-issue-check 第 22 條）。跟後端
 // GET /api/version_check 的 os_version 參數用同一套字串。

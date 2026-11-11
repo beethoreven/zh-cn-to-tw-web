@@ -1,6 +1,6 @@
 // 本機 OCR：PDF 一律在使用者電腦上辨識，後端只收辨識完的文字。
 // - Mac 11+、Windows：桌面殼內嵌的 zh-cn-to-tw-ocr-service（HTTP，用到才開）
-// - Mac 10.15：Apple 原生 Vision framework（訊息通道，見 runVisionOcrJob）
+// - Mac 10.15：殼內嵌的 Tesseract（訊息通道，見 runVisionOcrJob）
 
 import { DESKTOP_MODE, DESKTOP_OCR_TOKEN } from "../core/config.js";
 import { postToShell, exposeToShell } from "../core/bridge.js";
@@ -49,22 +49,44 @@ function releaseDesktopOcr() {
 // 本機 ocr-service 的 /ocr/pdf/start 只負責啟動、立刻回 job_id，實際的逐頁
 // OCR 在它自己的背景執行緒跑，這裡輪詢 /ocr/pdf/status/<job_id> 拿進度。
 // 本機服務沒有登入 token，改帶 X-OCR-Token。
+// 連續幾次連不上本機服務就當它已經死了（每 5 秒一次，約 15 秒）。
+const MAX_CONSECUTIVE_POLL_ERRORS = 3;
+
 function pollLocalOcrJob(jobId, hooks) {
   return new Promise((resolve, reject) => {
+    let consecutiveErrors = 0;
+    const fail = (message) => {
+      clearInterval(timer);
+      reject(new Error(message));
+    };
     // 先立刻查一次，再每 5 秒一次
     const tick = async () => {
+      // 服務中途結束（crash、被系統砍掉）時殼會把 port 清成 null。job 只存在
+      // 那個服務的記憶體裡，就算之後再拉起一個新的也查不到這個 job，等下去
+      // 不會有結果。原本這裡只有「done／failed」兩個出口，服務死掉時每一輪
+      // 都落進下面的 catch、永遠等不到結束，Stage 1 會一直停在「執行中」、
+      // 所有表單鎖住。
+      const base = desktopOcrBase();
+      if (!base) {
+        fail("本機 OCR 服務意外結束，請再按一次「上傳並開始繁化」重試");
+        return;
+      }
       let res;
       let job;
       try {
-        // 每一輪都重新解析 base——服務中途重啟換 port 的話，下一輪就會
-        // 自動打到新的那個上去。
-        res = await fetch(`${desktopOcrBase()}/ocr/pdf/status/${jobId}`, {
+        res = await fetch(`${base}/ocr/pdf/status/${jobId}`, {
           headers: { "X-OCR-Token": DESKTOP_OCR_TOKEN },
         });
         job = await res.json();
       } catch (e) {
-        return; // 網路暫時性錯誤，下一輪再試
+        // 本機連線偶爾失敗一次就再試，連續失敗才當成服務已經不在了
+        consecutiveErrors++;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+          fail("連不上本機 OCR 服務，請再按一次「上傳並開始繁化」重試");
+        }
+        return;
       }
+      consecutiveErrors = 0;
 
       hooks.onLogs(job.logs);
 
@@ -101,8 +123,10 @@ function pollLocalOcrJob(jobId, hooks) {
 }
 
 // 10.15 分流的本機 OCR：zh-cn-to-tw-ocr-service 在真正的 macOS 10.15 上跑
-// 不動（見 zh-cn-to-tw-mac 的 VisionOCRManager.swift），改用 visionOcr 訊息
-// 通道——把 PDF 讀成 base64 postMessage 過去，殼用 Vision framework 處理，
+// 不動（見 zh-cn-to-tw-mac 的 TesseractOCRManager.swift），改用 visionOcr 訊息
+// 通道——把 PDF 讀成 base64 postMessage 過去，殼用內嵌的 Tesseract 處理
+// （2.0（含）以前用 Apple Vision framework，10.15 的 Vision 只認得英文，所以換掉；
+// 通道名稱沿用舊名），
 // 再呼叫 window.__visionOcrProgress(payload) 把進度/結果推回來。resolve 的
 // 形狀（{ pages }）刻意跟 pollLocalOcrJob 一致。
 function runVisionOcrJob(file, options, hooks) {
@@ -156,7 +180,7 @@ function runVisionOcrJob(file, options, hooks) {
 // hooks: {onStatus(text), onLogs(logs)}
 export async function runLocalOcr(file, options, hooks) {
   if (options.useVision) {
-    // Vision framework 在同一個 process 裡跑，沒有 subprocess 可以啟動/關閉
+    // 殼每頁跑一次 Tesseract 就結束，沒有常駐的 subprocess 要啟動/關閉
     hooks.onStatus("本機 OCR 準備中（讀取 PDF）");
     return (await runVisionOcrJob(file, options, hooks)).pages;
   }

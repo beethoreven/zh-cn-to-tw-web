@@ -15,6 +15,7 @@ import { API_BASE, DESKTOP_MODE, GOOGLE_CLIENT_ID } from "../core/config.js";
 import {
   authHeaders,
   getSessionToken,
+  handleDesktopSignInFailed,
   setSessionToken,
   settleReauthWaiters,
 } from "../core/api.js";
@@ -56,6 +57,10 @@ function showSignedOutUI() {
   // 同一個畫面換一個帳號登入後，不能還看得到上一個使用者的結果，下載鍵
   // 背後也不能還指著上一個使用者的 job。
   emit("auth:signed-out");
+  // 等重新登入的途中登出：等待中的請求放行（各 Stage 已經因為上面的
+  // auth:signed-out 作廢了這一輪，放行後的結果不會寫進畫面），「重新登入
+  // 沒有完成」的對話窗也一併關掉，不然會蓋在未登入的畫面上
+  settleReauthWaiters();
   refreshLockStates();
 }
 
@@ -180,6 +185,8 @@ function initGoogleSignIn() {
 
 export function initLogin() {
   exposeToShell("handleCredentialResponse", handleCredentialResponse);
+  // 殼的系統瀏覽器登入失敗時呼叫（兩個殼都有），見 js/core/api.js
+  exposeToShell("__desktopSignInFailed", handleDesktopSignInFailed);
 
   accountSlotEl.addEventListener("click", () => {
     accountDropdownEl.hidden = !accountDropdownEl.hidden;
