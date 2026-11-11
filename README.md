@@ -44,7 +44,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 **流程進度條**：三個圓用一條線串起來，每個圓有六種狀態：還沒開始、等等會執行、執行中、這次不執行、已完成、失敗或中斷。「等等會執行／這次不執行」是從接續設定算出來的：Stage 1 的「完成後自動接續執行」選單（不接／接 Stage 2／接 Stage 3／一路執行完所有 Stage），以及 Stage 2 的「接續 Stage 3 校對」開關。「一路執行完所有 Stage」依序跑 1 → 2 → 3，不看 Stage 2 的開關。Stage 1 的「進行前置處理」與「進行LLM潤飾」都關閉時，這次流程後面一律不用 LLM：選單只能選「不接／接 Stage 2」（原本選接 Stage 3 或一路執行完的，自動改成接 Stage 2），Stage 2 不做分析報告、也不接 Stage 3。這張排程（`app/workflow.js` 的 `planFrom`）是「接下去跑哪個 Stage」唯一的依據，`app/chain.js` 只看排出來的結果，不自己再判斷一次開關。流程跑到一半改了接續設定，還沒開始的 Stage 會跟著更新。
 
-**鎖定規則**：「開始」類按鈕在任何工作進行中都鎖住；後面 Stage 的設定在前面 Stage 跑的時候仍然可以改（等等自動接續時會用到），輪到自己跑才鎖——唯一的例外是下面說的 model 選單。直接上傳檔案的那一兩秒也算「處理中」——不然上傳完成時清掉其他 Stage 的動作，會把剛按下開始的工作清掉，畫面卡在「執行中」（known-issue-check 第 2 條）。
+**鎖定規則**：「開始」類按鈕在任何工作進行中都鎖住；後面 Stage 的設定在前面 Stage 跑的時候仍然可以改（等等自動接續時會用到），輪到自己跑才鎖——唯一的例外是下面說的 model 選單。直接上傳檔案的那一兩秒也算「處理中」——不然上傳完成時清掉其他 Stage 的動作，會把剛按下開始的工作清掉，畫面卡在「執行中」。
 
 **接續時用哪個 model**：流程是從 Stage 1 開始的，接下去用到 LLM 的地方——Stage 2 的分析報告、Stage 3 校對——一律沿用 Stage 1 選的 model（Stage 3 是 1.x「直接進行校對」的既有行為，Stage 2 比照）。這段期間 Stage 2、Stage 3 的 model 選單會直接顯示那個 model 並鎖住，下面標示「沿用 Stage 1 選的 Model」，不讓人以為改那裡有用；Stage 1 的 model 欄位只有在「進行前置處理」與「進行LLM潤飾」都關閉時才鎖（這時後面也不會用到 LLM，見上面）。從 Stage 2 開始的，用各 Stage 自己的設定。輸出格式（txt／docx）跟著前一個 Stage：從 Stage 1 開始的流程，Stage 2 沿用 Stage 1 的，Stage 3 再沿用 Stage 2 的，等於一路都是 Stage 1 的設定。
 
@@ -74,7 +74,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 **殼與網頁的約定集中在 `js/core/bridge.js`**：網頁 → 殼走 `window.webkit.messageHandlers.<channel>.postMessage(...)`（WebView2 沒有這個物件，Windows 殼在頁面載入前自己注入一段 shim 補上），目前的 channel 有 `desktopSignIn`、`ocrService`、`activityGuard`、`legacyDownload`、`visionOcr`（只有 Mac 10.15），另外 `consoleLog` 是殼自己注入的腳本用來把 console 訊息轉給殼記錄。殼 → 網頁是直接執行一段 JS，會呼叫的全域名稱有 `handleCredentialResponse`、`showToast`、`window.__attemptAutoSaveBeforeSleep`、`window.__visionOcrProgress`，殼也會直接寫入 `window.__OCR_PORT__`。ES module 裡宣告的函式預設不是全域的，一定要經過 `exposeToShell` 掛上去，否則殼呼叫時只會得到 ReferenceError，畫面上什麼都不會發生。新增或改名任何一個，兩個殼都要跟著改。
 
-**半路上的非同步結果要能作廢**：輪詢沿用 1.x 的 generation 守門（known-issue-check 第 2 條）。2.0 另外加了一個「登出 epoch」（`app/workflow.js` 的 `getRunEpoch()`）：登出時遞增，還在半路上的流程——最長的是 Stage 1 的本機 OCR，可能跑好幾分鐘——回來時發現 epoch 變了就整個放棄。它不會把上一個登入狀態的結果寫進現在的畫面，不會用現在（可能是另一個帳號）的登入送出去，也不會把現在的「處理中」解除掉。
+**半路上的非同步結果要能作廢**：輪詢沿用 1.x 的 generation 守門：晚到的舊回應不能蓋掉新一輪的畫面。2.0 另外加了一個「登出 epoch」（`app/workflow.js` 的 `getRunEpoch()`）：登出時遞增，還在半路上的流程——最長的是 Stage 1 的本機 OCR，可能跑好幾分鐘——回來時發現 epoch 變了就整個放棄。它不會把上一個登入狀態的結果寫進現在的畫面，不會用現在（可能是另一個帳號）的登入送出去，也不會把現在的「處理中」解除掉。
 
 ### 為什麼這個 repo 的內容不會出現在 GitHub Pages 上
 
@@ -131,7 +131,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 各 Stage 執行中會輪詢後端查進度，1.x 早期的 `loadUsage()`（今日 Gemini 額度、Claude token 費用）也掛在同一個輪詢迴圈裡，每輪一起打。這個數字其實完全不需要即時——使用者不會盯著它看它跳動，需要即時的只有三類：「隨時可能中斷需要恢復的工作狀態」「執行進度」「使用者操作的直接回饋」。用量統計都不屬於這三類。
 
-改成只在「登入時」跟「每個 Stage 結束時（含失敗／中斷）」才更新（`js/app/usage.js` 的 `refreshUsageAfterStage()`），Stage 1 執行中每輪的請求數因此從 4 個降到 1 個。這個判斷準則後來寫成了一個通用的稽核方法（`real-time-scenario` skill）：任何「持續輪詢／持續同步」的設計，都該先問「如果這個晚幾秒才更新，誰會發現、會壞掉什麼」，答不出來就不該是即時的。
+改成只在「登入時」跟「每個 Stage 結束時（含失敗／中斷）」才更新（`js/app/usage.js` 的 `refreshUsageAfterStage()`），Stage 1 執行中每輪的請求數因此從 4 個降到 1 個。判斷準則是：任何「持續輪詢／持續同步」的設計，都該先問「如果這個晚幾秒才更新，誰會發現、會壞掉什麼」，答不出來就不該是即時的。
 
 ### Session 儲存
 
@@ -269,7 +269,7 @@ Once Stage 2 was added, the old horizontal layout ("Stage 1 and Stage 2 side by 
 
 **The stepper**: three circles joined by a line, each in one of six states: not started, will run, running, won't run this time, done, failed or interrupted. "Will run / won't run this time" is computed from the chaining settings: Stage 1's "continue automatically after finishing" select (none / Stage 2 / Stage 3 / run all Stages) and Stage 2's "continue to Stage 3 proofreading" switch. "Run all Stages" runs 1 → 2 → 3 in order and ignores Stage 2's switch. When both of Stage 1's "preprocessing" and "LLM polish" are off, nothing later in that flow uses an LLM: the select only offers "none / Stage 2" (a previous choice of Stage 3 or run-all switches to Stage 2), and Stage 2 neither runs the analysis report nor continues to Stage 3. This plan (`planFrom` in `app/workflow.js`) is the only source of truth for which Stage runs next; `app/chain.js` just follows the planned Stages and never re-checks the switches itself. Changing a chaining setting mid-flow updates the Stages that haven't started yet.
 
-**Locking rules**: "start"-type buttons are locked while any job is running; a later Stage's settings stay editable while an earlier Stage runs (they'll be used when the flow chains into it), and lock only when that Stage itself runs — the one exception is the model select described below. The second or two of a direct file upload also counts as "processing" — otherwise the upload's completion, which clears the other Stages, would wipe out a job that had just been started, leaving the screen stuck on "running" (known-issue-check item 2).
+**Locking rules**: "start"-type buttons are locked while any job is running; a later Stage's settings stay editable while an earlier Stage runs (they'll be used when the flow chains into it), and lock only when that Stage itself runs — the one exception is the model select described below. The second or two of a direct file upload also counts as "processing" — otherwise the upload's completion, which clears the other Stages, would wipe out a job that had just been started, leaving the screen stuck on "running".
 
 **Which model is used when chaining**: if the flow started at Stage 1, everything downstream that calls an LLM — Stage 2's analysis report and Stage 3 proofreading — uses Stage 1's model (for Stage 3 this is the existing 1.x "proofread directly" behavior; Stage 2 follows suit). Meanwhile the Stage 2 and Stage 3 model selects show that model, locked, with a note "沿用 Stage 1 選的 Model" (using Stage 1's model) underneath, so nobody thinks changing them would matter; Stage 1's own model field is locked only when both "preprocessing" and "LLM polish" are off (nothing later uses an LLM then, see above). If the flow started at Stage 2, each Stage uses its own setting. The output format (txt/docx) follows the previous Stage: in a flow started at Stage 1, Stage 2 takes Stage 1's and Stage 3 takes Stage 2's, so it's Stage 1's setting all the way.
 
@@ -299,7 +299,7 @@ Dependencies always point core → auth → app → stages, with no cycles. Stag
 
 **The contract between the shell and the page lives in `js/core/bridge.js`**: page → shell goes through `window.webkit.messageHandlers.<channel>.postMessage(...)` (WebView2 has no such object, so the Windows shell injects a shim before the page loads). The current channels are `desktopSignIn`, `ocrService`, `activityGuard`, `legacyDownload`, and `visionOcr` (Mac 10.15 only); `consoleLog` is used by the shell's own injected script to forward console messages to the shell's log. Shell → page works by running a piece of JS directly, and the global names it calls are `handleCredentialResponse`, `showToast`, `window.__attemptAutoSaveBeforeSleep`, and `window.__visionOcrProgress`; the shell also writes `window.__OCR_PORT__` directly. Functions declared in an ES module are not global by default, so they must be attached through `exposeToShell` — otherwise the shell's call just gets a ReferenceError and nothing visibly happens. Adding or renaming any of these means changing both shells too.
 
-**Async results that come back late must be discardable**: polling keeps 1.x's generation guard (known-issue-check item 2). 2.0 also adds a "sign-out epoch" (`getRunEpoch()` in `app/workflow.js`): it increments on sign-out, and a flow still in flight — the longest is Stage 1's local OCR, which can run for minutes — abandons itself entirely when it comes back and sees the epoch changed. It never writes the previous sign-in's result into the current page, never submits with the current (possibly different) account's sign-in, and never clears the current "processing" state.
+**Async results that come back late must be discardable**: polling keeps 1.x's generation guard: a late response from an old round must not overwrite the current one. 2.0 also adds a "sign-out epoch" (`getRunEpoch()` in `app/workflow.js`): it increments on sign-out, and a flow still in flight — the longest is Stage 1's local OCR, which can run for minutes — abandons itself entirely when it comes back and sees the epoch changed. It never writes the previous sign-in's result into the current page, never submits with the current (possibly different) account's sign-in, and never clears the current "processing" state.
 
 ### Why This Repo's Content Never Appears on GitHub Pages
 
@@ -356,7 +356,7 @@ The normal local-OCR path (`ensureDesktopOcrReady()` launches the `zh-cn-to-tw-o
 
 Each Stage polls the backend for progress while running. In early 1.x, `loadUsage()` (today's Gemini quota, Claude token cost) lived inside that same polling loop, firing on every tick. That number genuinely never needs to be real-time — nobody watches it tick up live. Only three kinds of thing actually need to be real-time: state that can be interrupted and needs recovery, execution progress, and direct feedback for something the user just did. Usage stats fit none of those.
 
-It now updates only "on login" and "at the end of each Stage (including failure/interruption)" (`refreshUsageAfterStage()` in `js/app/usage.js`), dropping Stage 1's per-tick request count from 4 to 1. This judgment call was later generalized into a reusable audit method (the `real-time-scenario` skill): for any "keeps polling/keeps syncing" design, ask first "if this were a few seconds stale, who would notice, and what would break" — if there's no answer, it shouldn't be real-time.
+It now updates only "on login" and "at the end of each Stage (including failure/interruption)" (`refreshUsageAfterStage()` in `js/app/usage.js`), dropping Stage 1's per-tick request count from 4 to 1. The rule of thumb: for any "keeps polling/keeps syncing" design, ask first "if this were a few seconds stale, who would notice, and what would break" — if there's no answer, it shouldn't be real-time.
 
 ### Session Storage
 

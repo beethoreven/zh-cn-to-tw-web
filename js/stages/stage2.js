@@ -385,7 +385,6 @@ function pollAnalysis(analysisId) {
       return;
     }
     // 同一個 generation 守門：姍姍來遲的舊回應不能蓋掉新的畫面
-    // （known-issue-check 第 2 條）
     if (myGeneration !== analysisGeneration) return;
 
     if (!res.ok) {
@@ -468,7 +467,7 @@ async function directUpload() {
   }
   // 上傳期間當成「處理中」：其他 Stage 的「開始」都先鎖住。不然在上傳的
   // 這一兩秒內按了別的 Stage 開始，上傳完成時的 pipeline:clear 會把那個
-  // 剛開始的工作清掉，畫面卡在「執行中」（known-issue-check 第 2 條）
+  // 剛開始的工作清掉，畫面卡在「執行中」
   setBusy(true);
   const formData = new FormData();
   formData.append("file", file);

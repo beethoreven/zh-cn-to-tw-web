@@ -220,7 +220,7 @@ function refreshPlan() {
 // 登出時遞增。還在半路上的非同步流程（最長的是 Stage 1 的本機 OCR，可能
 // 跑好幾分鐘）回來時比對一下，epoch 變了就整個放棄：上一個登入狀態的結果
 // 不能寫進現在的畫面、不能用現在（可能是另一個帳號）的登入送出去，也不能
-// 把現在的「處理中」解除掉（known-issue-check 第 2 條）
+// 把現在的「處理中」解除掉
 let runEpoch = 0;
 
 export function getRunEpoch() {

@@ -60,7 +60,7 @@ let source = null; // { jobId, label, from: "stage1" | "stage2" | "upload" }
 let reviewId = null;
 let canRerun = false;
 let pollTimer = null;
-// 跟 Stage 1 的 pollGeneration 同一個道理（known-issue-check 第 2 條）。這正是
+// 跟 Stage 1 的 pollGeneration 同一個道理：晚到的舊回應不能蓋掉新一輪的畫面。這正是
 // 實測抓到的案例：校對因為 backend 剛好在 deploy 被中斷，使用者按重試後，
 // 勾選的建議項目在幾秒後莫名其妙被取消掉。
 let pollGeneration = 0;
@@ -336,7 +336,7 @@ async function directUpload() {
   }
   // 上傳期間當成「處理中」：其他 Stage 的「開始」都先鎖住。不然在上傳的
   // 這一兩秒內按了別的 Stage 開始，上傳完成時的 pipeline:clear 會把那個
-  // 剛開始的工作清掉，畫面卡在「執行中」（known-issue-check 第 2 條）
+  // 剛開始的工作清掉，畫面卡在「執行中」
   setBusy(true);
   const formData = new FormData();
   formData.append("file", file);

@@ -64,7 +64,7 @@ let pollTimer = null;
 // pollJob() 每次被呼叫都代表新的一輪輪詢，這個計數器就是那一輪的代號。
 // tick() 是 async，await 那段完全可能拖到「這一輪」早就被換掉之後才
 // resolve——這種姍姍來遲的舊 callback 不能再去動任何畫面狀態，不然會把
-// 新一輪已經正確的畫面蓋掉（known-issue-check 第 2 條）。
+// 新一輪已經正確的畫面蓋掉。
 let pollGeneration = 0;
 
 export function getResultJobId() {
