@@ -5,10 +5,60 @@
    - running  正在執行
    - skipped  這次不會執行（沒有開接續到它）
    - done     已完成
-   - failed   失敗或被中斷 */
+   - failed   失敗或被中斷
+   另外整條 .stepper 在還沒確定劇本案之前帶 is-locked：灰階、調淡、點不了，
+   上方顯示提示；解鎖那一刻帶 is-unlocking 播一次動畫。 */
 
 .stepper {
   padding: 1rem 1.5rem;
+  transition: background-color 0.3s ease;
+}
+
+.stepper__list {
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+.stepper.is-locked .stepper__list {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* 淡化只由整條 .stepper__list 負責；按鈕本身的 disabled 樣式再調淡一次
+   會疊成幾乎看不見 */
+.stepper.is-locked .stepper__jump:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.stepper__lock-hint {
+  margin: 0 0 0.75rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.stepper__lock-hint::before {
+  content: "🔒 ";
+}
+
+/* 解鎖後、還沒開始任何工作時，圓圈用主色描邊，看起來是「可以開始了」，
+   跟鎖住時的灰色有明顯差別 */
+.stepper:not(.is-locked) .stepper__step[data-status="idle"] .stepper__dot {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stepper.is-unlocking {
+  animation: stepper-unlock 0.9s ease-out;
+}
+
+@keyframes stepper-unlock {
+  0% {
+    box-shadow: 0 0 0 0 rgba(138, 51, 36, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(138, 51, 36, 0);
+  }
 }
 
 .stepper__list {
@@ -135,7 +185,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stepper__step[data-status="running"] .stepper__dot {
+  .stepper__step[data-status="running"] .stepper__dot,
+  .stepper.is-unlocking {
     animation: none;
   }
 }

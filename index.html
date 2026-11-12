@@ -88,8 +88,11 @@
 
         <!-- 處理流程：三個圓代表三個 Stage，狀態由 js/app/workflow.js 決定
              （正在執行／等等會執行／這次不會執行／已完成／失敗）。點圓可以
-             跳到對應的 Stage。 -->
-        <nav class="stepper card" id="stepper" aria-label="處理流程">
+             跳到對應的 Stage。
+             還沒確定劇本案之前整條是灰的、鎖住的（js/app/stage-card.js），
+             按下確定才解鎖，讓人一眼看出「現在可以往下做了」。 -->
+        <nav class="stepper card is-locked" id="stepper" aria-label="處理流程">
+          <p class="stepper__lock-hint" id="stepper-lock-hint">先在上方選定「本案處理劇本」並按「確定」，才能開始處理</p>
           <ol class="stepper__list">
             <li class="stepper__step" data-stage="1" data-status="idle">
               <button type="button" class="stepper__jump" data-target="stage1-card">

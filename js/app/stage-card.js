@@ -7,12 +7,14 @@
 // 先展開再收起來閃一下）；換了劇本案也會全部收回去。
 //
 // 自動行為：某個 Stage 開始跑時，把它的卡片打開；如果它是流程自動串接
-// 過來的，前面已經做完的卡片收起來、捲到它，畫面不會越拉越長。點流程
+// 過來的，前面已經做完的卡片收起來、捲到它，畫面不會越拉越長（Stage 2
+// 有分析報告時例外，不收）。點流程
 // 進度條的圓圈、按「下一步」也會打開對應的卡片。使用者隨時可以自己點標題
 // 列打開或收起任何一張卡片。
 
 import { byId } from "../core/dom.js";
 import { on } from "../core/events.js";
+import { registerLock } from "./workflow.js";
 
 const STATUS_LABELS = {
   idle: "",
@@ -63,6 +65,14 @@ export function scrollToStage(stage) {
   cardEls(stage).card.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// Stage 2 這次有做分析報告（不論還在跑或已經跑完）。報告常常在 Stage 3
+// 開始後沒多久就出來，自動收起的話使用者還得自己再打開，所以這種情況
+// Stage 2 不主動收起，交給使用者自己收。分析區塊只在真的送出分析時才會
+// 顯示（見 stages/stage2.js 的 startAnalysis），換新工作時會隱藏。
+function hasAnalysisReport() {
+  return !byId("pattern-analysis").hidden;
+}
+
 function renderStepper(stage, status) {
   const step = document.querySelector(`.stepper__step[data-stage="${stage}"]`);
   if (!step) return;
@@ -76,6 +86,30 @@ export function initStageCards() {
     els.header.addEventListener("click", () => {
       setCollapsed(stage, !els.card.classList.contains("is-collapsed"));
     });
+  });
+
+  // 還沒確定劇本案：整條進度條灰掉、圓圈點不了，並顯示提示。按下確定
+  // 之前畫面上其他地方看起來都一樣，不鎖住的話使用者看不出按確定有沒有
+  // 起作用、下一步該做什麼。
+  const stepperEl = byId("stepper");
+  const lockHintEl = byId("stepper-lock-hint");
+  registerLock((s) => {
+    const locked = !s.projectConfirmed;
+    const wasLocked = stepperEl.classList.contains("is-locked");
+    stepperEl.classList.toggle("is-locked", locked);
+    lockHintEl.hidden = !locked;
+    stepperEl.querySelectorAll(".stepper__jump").forEach((btn) => {
+      btn.disabled = locked;
+    });
+    // 從鎖住變成解鎖的那一刻閃一下，讓「解鎖了」這件事被看見
+    if (wasLocked && !locked) {
+      stepperEl.classList.remove("is-unlocking");
+      void stepperEl.offsetWidth;
+      stepperEl.classList.add("is-unlocking");
+    }
+  });
+  stepperEl.addEventListener("animationend", (e) => {
+    if (e.target === stepperEl) stepperEl.classList.remove("is-unlocking");
   });
 
   document.querySelectorAll(".stepper__jump").forEach((btn) => {
@@ -101,7 +135,10 @@ export function initStageCards() {
       // 只有自動串接過來的 Stage 才收起前面、捲過去；使用者自己按「開始」
       // 時人就在那張卡片上，捲動反而會把剛出現的進度區捲離畫面
       if (run && stage > run.origin) {
-        for (let earlier = run.origin; earlier < stage; earlier++) setCollapsed(earlier, true);
+        for (let earlier = run.origin; earlier < stage; earlier++) {
+          if (earlier === 2 && hasAnalysisReport()) continue;
+          setCollapsed(earlier, true);
+        }
         scrollToStage(stage);
       }
     }
