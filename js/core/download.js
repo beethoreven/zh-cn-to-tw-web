@@ -4,6 +4,7 @@
 import { DESKTOP_OS_TIER } from "./config.js";
 import { authedFetch, errorFromResponse } from "./api.js";
 import { hasShellChannel, postToShell } from "./bridge.js";
+import { safeDownloadFilename } from "./filename.js";
 
 function filenameFromContentDisposition(header, fallback) {
   if (!header) return fallback;
@@ -15,7 +16,13 @@ function filenameFromContentDisposition(header, fallback) {
   // 前者，所以還是要留著這個 fallback。
   const extendedMatch = /filename\*=UTF-8''([^;]+)/i.exec(header);
   if (extendedMatch) {
-    return decodeURIComponent(extendedMatch[1]);
+    // 編碼壞掉（% 後面不是合法的十六進位）時 decodeURIComponent 會丟例外；
+    // 不讓整個下載跟著失敗，改用預設檔名。
+    try {
+      return decodeURIComponent(extendedMatch[1]);
+    } catch (e) {
+      return fallback;
+    }
   }
   const plainMatch = /filename="?([^";]+)"?/i.exec(header);
   return plainMatch ? plainMatch[1] : fallback;
@@ -37,7 +44,17 @@ function blobToBase64(blob) {
   });
 }
 
-export async function saveBlob(blob, filename) {
+// filename 最源頭多半是伺服器的回應，存檔前一律先整理（只留最後一段、只收
+// .txt／.docx，見 js/core/filename.js）。整理後不能用，就改用
+// fallbackFilename——呼叫端自己寫死的名字。
+export async function saveBlob(blob, filename, fallbackFilename) {
+  const safeName = safeDownloadFilename(filename, fallbackFilename || "download.txt");
+  if (safeName !== filename) {
+    // 正常的下載不會走到這裡；留一行記錄，檔名跟預期不同時才查得到原因。
+    // 不印出原本的名字，它不是這個 App 自己產生的內容。
+    console.warn("[download] 檔名經過整理，或不能用而改成預設檔名");
+  }
+
   // 10.15 那包桌面殼的 WKWebView 部署目標壓到 10.15，沒有 WKDownload
   // （要 macOS 11.3+，見 zh-cn-to-tw-mac 的 WebView.swift 說明）——下面
   // 這條「blob: URL + <a download> 模擬點擊」的路在那包完全沒有東西
@@ -46,14 +63,14 @@ export async function saveBlob(blob, filename) {
   // 下載資料夾。11+ 桌面殼、Windows 殼跟純瀏覽器都走下面原本那條路。
   if (DESKTOP_OS_TIER === "10.15" && hasShellChannel("legacyDownload")) {
     const base64 = await blobToBase64(blob);
-    postToShell("legacyDownload", { filename, base64 });
+    postToShell("legacyDownload", { filename: safeName, base64 });
     return;
   }
 
   const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = objectUrl;
-  a.download = filename;
+  a.download = safeName;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -61,7 +78,7 @@ export async function saveBlob(blob, filename) {
 }
 
 export function saveText(text, filename) {
-  return saveBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), filename);
+  return saveBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), filename, "download.txt");
 }
 
 // 下載端點需要帶登入憑證，不能直接用 <a href> 導覽（那樣沒辦法附加
@@ -75,5 +92,5 @@ export async function downloadViaAuthedFetch(url, fallbackFilename) {
   }
   const blob = await res.blob();
   const filename = filenameFromContentDisposition(res.headers.get("Content-Disposition"), fallbackFilename);
-  await saveBlob(blob, filename);
+  await saveBlob(blob, filename, fallbackFilename);
 }

@@ -4,7 +4,8 @@
 // WKWebView 的 API；Windows 殼（WebView2）沒有這個物件，殼自己在頁面載入前
 // 注入一段 shim 補上，網頁不用分平台。目前的 channel：consoleLog、
 // desktopSignIn、ocrService、activityGuard、legacyDownload、visionOcr
-// （最後一個只有 Mac 10.15 分流有）。
+// （最後兩個只有 Mac 10.15 分流有；其他殼沒有註冊，用 hasShellChannel
+// 判斷得出來）。
 //
 // 殼 → 網頁：殼用 evaluateJavaScript / ExecuteScriptAsync 直接執行一段 JS，
 // 所以被呼叫的東西必須是 window 上的全域名稱。ES module 裡宣告的函式預設
