@@ -116,13 +116,17 @@ async function checkAuthStatus() {
 // Google 回傳的 response.credential 是 Google ID Token（效期約 1 小時），
 // 這裡換一次應用程式自己的 session token。不管成功還是失敗，都要呼叫
 // settleReauthWaiters() 放行正在等重新登入的呼叫端，見 js/core/api.js。
-// 桌面殼登入完成後會直接呼叫這支（見 js/core/bridge.js）。
+// 桌面殼登入完成後會直接呼叫這支（見 js/core/bridge.js），另外帶
+// response.nonce：殼這次登入產生的 nonce 原值，後端用它確認這個 token
+// 是這個 App 自己登入拿到的（見 zh-cn-to-tw-backend 的 auth_utils/auth.py）。
+// 瀏覽器版（Google Identity Services）沒有這個欄位，JSON.stringify 會略過
+// undefined 的欄位，送出去的內容跟以前一樣。
 async function handleCredentialResponse(response) {
   try {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_token: response.credential }),
+      body: JSON.stringify({ id_token: response.credential, nonce: response.nonce }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
