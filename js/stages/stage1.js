@@ -31,6 +31,8 @@ const submitBtn = byId("submit-btn");
 const statusBox = byId("status-box");
 const statusText = byId("status-text");
 const logList = byId("log-list");
+const ocrGapBox = byId("ocr-gap-box");
+const ocrGapList = byId("ocr-gap-list");
 const downloadBtn = byId("download-btn");
 const toStage2Btn = byId("to-stage2-btn");
 const toStage3Btn = byId("to-stage3-btn");
@@ -169,6 +171,34 @@ function applyLock(s) {
   toStage3Btn.disabled = locked || !hasResult;
 }
 
+// 本機 OCR 回報的、要對照原檔確認的位置。放在 log 清單外面獨立一塊：log
+// 之後還會一直往下長，混在裡面使用者回頭找不到。每一筆寫原始 PDF 的頁碼，
+// 加上一小段辨識出來的文字，讓使用者翻到那一頁就找得到位置。兩種：
+// - kind "gap"：行距偏大，before／after 兩行之間可能漏了一行
+// - kind "unclear"：text 這一行有收進結果，但辨識信心低
+const GAP_SNIPPET_CHARS = 12;
+const UNCLEAR_SNIPPET_CHARS = 24;
+
+function renderPossibleMissing(items) {
+  ocrGapList.innerHTML = "";
+  items.forEach((item) => {
+    const half = item.half === "left" ? "左半" : item.half === "right" ? "右半" : "";
+    const li = document.createElement("li");
+    li.className = "warning";
+    let what;
+    if (item.kind === "unclear") {
+      what = `「${item.text.slice(0, UNCLEAR_SNIPPET_CHARS)}」這一行認不清楚，字可能錯很多`;
+    } else {
+      const before = `「${item.before.slice(-GAP_SNIPPET_CHARS)}」`;
+      const after = `「${item.after.slice(0, GAP_SNIPPET_CHARS)}」`;
+      what = `${before}與${after}之間可能漏了一行`;
+    }
+    li.textContent = `PDF 第 ${item.pdf_page} 頁${half}：${what}`;
+    ocrGapList.appendChild(li);
+  });
+  ocrGapBox.hidden = items.length === 0;
+}
+
 function clearResult() {
   clearInterval(pollTimer);
   pollGeneration++;
@@ -176,6 +206,7 @@ function clearResult() {
   statusBox.hidden = true;
   backendLogs.reset();
   localOcrLogs.reset();
+  renderPossibleMissing([]);
   downloadBtn.disabled = true;
   toStage2Btn.disabled = true;
   toStage3Btn.disabled = true;
@@ -301,7 +332,7 @@ async function submit() {
   statusText.textContent = "上傳中";
 
   try {
-    const pages = await runLocalOcr(
+    const { pages, possibleMissing } = await runLocalOcr(
       file,
       {
         dpi: Number(dpiInput.value),
@@ -323,6 +354,7 @@ async function submit() {
     // 用現在的登入送出去
     if (stale()) return;
 
+    renderPossibleMissing(possibleMissing);
     statusText.textContent = "上傳中";
     const res = await authedFetch(`${API_BASE}/api/jobs/from-ocr-text`, {
       method: "POST",

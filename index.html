@@ -272,6 +272,13 @@
               <h3>處理進度</h3>
               <p>狀態：<span id="status-text">-</span></p>
               <ul id="log-list" class="log-list"></ul>
+              <div id="ocr-gap-box" hidden>
+                <h3>請對照原檔確認的位置</h3>
+                <p class="field-help">
+                  「可能漏了一行」是行距比同一頁其他行大，原檔在那裡可能有一行沒有出現在結果裡；「認不清楚」是那一行有放進結果，但字可能錯很多。引用的是辨識出來的原文（簡體）。
+                </p>
+                <ul id="ocr-gap-list" class="log-list log-list--short"></ul>
+              </div>
               <div class="download-row">
                 <button id="download-btn" disabled>下載繁化結果</button>
                 <button id="to-stage2-btn" class="button-secondary" disabled>下一步：Stage 2 通用修改</button>

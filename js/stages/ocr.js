@@ -175,14 +175,18 @@ function runVisionOcrJob(file, options, hooks) {
   });
 }
 
-// 對外的單一入口：依平台選擇 OCR 方式，回傳每一頁的文字。
+// 對外的單一入口：依平台選擇 OCR 方式，回傳 { pages, possibleMissing }。
+// pages 是每一頁的文字；possibleMissing 是要對照原檔確認的位置
+// （[{kind, page, pdf_page, half, line, before, after, text}]，kind 是
+// "gap"＝可能漏了一行、"unclear"＝這一行認不清楚），只有本機 OCR 服務會
+// 回報，Tesseract 那條路一律是空陣列。
 // options: {dpi, detectCover, splitLeftRight, boxThresh, useVision}
 // hooks: {onStatus(text), onLogs(logs)}
 export async function runLocalOcr(file, options, hooks) {
   if (options.useVision) {
     // 殼每頁跑一次 Tesseract 就結束，沒有常駐的 subprocess 要啟動/關閉
     hooks.onStatus("本機 OCR 準備中（讀取 PDF）");
-    return (await runVisionOcrJob(file, options, hooks)).pages;
+    return { pages: (await runVisionOcrJob(file, options, hooks)).pages, possibleMissing: [] };
   }
 
   hooks.onStatus("啟動本機 OCR 服務");
@@ -208,7 +212,8 @@ export async function runLocalOcr(file, options, hooks) {
       throw new Error(err.error || "本機 OCR 辨識失敗");
     }
     const started = await startRes.json();
-    return (await pollLocalOcrJob(started.job_id, hooks)).pages;
+    const job = await pollLocalOcrJob(started.job_id, hooks);
+    return { pages: job.pages, possibleMissing: job.possible_missing || [] };
   } finally {
     // OCR 這一步已經結束，結果也已經在手上了，服務沒有存在的必要。後面
     // 把文字送去 Render 潤飾那段完全不需要它。
