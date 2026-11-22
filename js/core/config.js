@@ -18,16 +18,44 @@ function paramOr(key, fallback) {
   return value === null ? fallback : value;
 }
 
-// 預設「同源」（相對路徑），例外是 GitHub Pages 上的舊純網頁版，那裡沒有
-// API 可以打，只能打 Render。桌面殼一律在網址帶 ?apiBase=<Render 網址>，
-// 不會走到這兩個預設值。
-const API_BASE_OVERRIDE = params.get("apiBase");
-export const API_BASE =
-  API_BASE_OVERRIDE !== null
-    ? API_BASE_OVERRIDE
-    : window.location.hostname.endsWith("github.io")
-      ? "https://zh-cn-to-tw-backend.onrender.com"
-      : "";
+const PRODUCTION_API_BASE = "https://zh-cn-to-tw-backend.onrender.com";
+
+// ?apiBase= 只接受正式的 Render 網址，或本機開發用的 http://localhost、
+// http://127.0.0.1（任何 port）。登入時 Google 的憑證會送到這個網址，要是
+// 能被指到任意主機，等於把憑證交給別人；不接受的值一律改用正式網址（桌面殼
+// 本來就只會帶正式網址，偵錯版才會帶本機網址）。
+function isAllowedApiBase(value) {
+  if (value === PRODUCTION_API_BASE) return true;
+  let url;
+  try {
+    url = new URL(value);
+  } catch (e) {
+    return false;
+  }
+  return (
+    url.protocol === "http:" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+    url.pathname === "/" &&
+    !url.search &&
+    !url.hash &&
+    !url.username &&
+    !url.password &&
+    value.replace(/\/$/, "") === url.origin
+  );
+}
+
+function resolveApiBase(override) {
+  if (override === null) {
+    // 沒帶參數：預設「同源」（相對路徑），例外是 GitHub Pages 上的舊純網頁版，
+    // 那裡沒有 API 可以打，只能打 Render
+    return window.location.hostname.endsWith("github.io") ? PRODUCTION_API_BASE : "";
+  }
+  if (isAllowedApiBase(override)) return override.replace(/\/$/, "");
+  console.warn("[config] 不接受這個 apiBase，改用正式網址");
+  return PRODUCTION_API_BASE;
+}
+
+export const API_BASE = resolveApiBase(params.get("apiBase"));
 
 // ===== 桌面版 App =====
 // 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶

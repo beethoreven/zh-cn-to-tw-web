@@ -5,6 +5,9 @@ import { authedFetch, errorFromResponse } from "../core/api.js";
 import { byId, populateSelect, setDisabled } from "../core/dom.js";
 import { showToast } from "../core/toast.js";
 
+// 管理員角色的 id（後端的 ADMIN_ROLE_ID）。<option> 的 value 是字串
+const ADMIN_ROLE_ID = "1";
+
 const selectEl = byId("admin-user-select");
 const loadBtn = byId("admin-user-load-btn");
 const editBtn = byId("admin-user-edit-btn");
@@ -150,10 +153,11 @@ function wire() {
     idFieldEl.hidden = true;
     emailEl.value = "";
     nameEl.value = "";
-    // 新建使用者預設角色：明確排除 admin，不要依賴選項在陣列裡的順序（萬一
+    // 新建使用者預設角色：明確排除管理員，不要依賴選項在陣列裡的順序（萬一
     // API 回傳順序改變，「挑最後一個」這種寫法可能會不小心把新使用者預設
-    // 成管理員）
-    const defaultRoleOption = Array.prototype.find.call(roleEl.options, (o) => o.textContent !== "admin");
+    // 成管理員）。看角色 id 不看名稱：後端認定管理員的方式是固定的 id
+    // （zh-cn-to-tw-backend 的 ADMIN_ROLE_ID），角色名稱可以在權限管理改掉
+    const defaultRoleOption = Array.prototype.find.call(roleEl.options, (o) => o.value !== ADMIN_ROLE_ID);
     roleEl.value = defaultRoleOption ? defaultRoleOption.value : roleEl.options.length ? roleEl.options[0].value : "";
     statusEl.value = "active";
     fieldsEl.hidden = false;

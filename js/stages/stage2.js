@@ -13,6 +13,7 @@ import { byId, createLogRenderer, escapeHtml, setDisabled } from "../core/dom.js
 import { downloadViaAuthedFetch, saveText } from "../core/download.js";
 import { emit, on } from "../core/events.js";
 import { showToast } from "../core/toast.js";
+import { warnHiddenTextSkipped } from "../core/upload-notice.js";
 import { checkVersionOrBlock } from "../core/version.js";
 import { createModelPicker, fetchReviewOpts } from "../app/options.js";
 import { setStageDetail } from "../app/stage-card.js";
@@ -480,6 +481,7 @@ async function directUpload() {
     clearAll();
     setSource(data.job_id, `上傳的檔案「${file.name}」`, "upload");
     showToast("已上傳，可以開始套用修正", "success");
+    warnHiddenTextSkipped(data.hidden_text_chars);
   } catch (e) {
     alert(e.message);
   } finally {

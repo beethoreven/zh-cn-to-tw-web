@@ -2,6 +2,20 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
+  <!-- 內容安全政策：只執行這個 App 自己的腳本，只連得到自己的後端與本機的 OCR
+       服務。萬一有人能把內容塞進頁面（例如顯示的資料沒跳脫好），也沒辦法從
+       別的地方載入腳本、或把資料送到別的主機。accounts.google.com/gsi 那幾項
+       只給瀏覽器版的 Google 登入用（見 js/auth/login.js），桌面版不載入它。
+       style-src 允許 inline style：Google 登入鈕會用 inline style 設定圖示大小，
+       擋掉的話按鈕會變成一個超大的 G（實測）。inline style 本身不能執行程式；
+       它能做的壞事是用 CSS 的 url() 把資料送出去，而 img-src、font-src 只允許
+       自己（img 另外允許 data:），送不到別的主機。
+       zhcntotw: 是 Mac 版殼供應網頁的自訂 scheme：WebKit 的 'self' 不認自訂
+       scheme 的來源，不寫出來的話，App 自己的腳本會全部被擋下、整頁不會動
+       （用真的 WKWebView 實測）。這個 scheme 只有殼自己的處理器在供應，內容
+       一定來自 App 裡面。
+       放在最前面：要在任何資源載入之前生效。 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' zhcntotw:; script-src 'self' zhcntotw: https://accounts.google.com/gsi/client; style-src 'self' zhcntotw: 'unsafe-inline' https://accounts.google.com/gsi/style; connect-src 'self' zhcntotw: https://zh-cn-to-tw-backend.onrender.com http://localhost:* http://127.0.0.1:* https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; img-src 'self' zhcntotw: data:; font-src 'self' zhcntotw:; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>劇本殺繁化助手</title>
   <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -25,7 +39,6 @@
   <link rel="stylesheet" href="css/pages/admin.css" />
   <link rel="stylesheet" href="css/utilities.css" />
 
-  <script src="https://accounts.google.com/gsi/client"></script>
   <!-- 整個前端是 ES module，入口只有這一支（相依關係由各檔案自己 import）。
        module 一定要從有來源的網址載入，file:// 會被 CORS 擋掉——桌面殼
        2.0 起改用 https://zh-cn-to-tw.example（Windows）／zhcntotw://app（Mac）

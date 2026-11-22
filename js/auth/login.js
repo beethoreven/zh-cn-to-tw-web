@@ -145,7 +145,54 @@ async function handleCredentialResponse(response) {
   }
 }
 
+// Google Identity Services 的腳本只有瀏覽器版用得到（桌面版改由殼用系統瀏覽器
+// 登入），所以不寫在 index.html 裡，瀏覽器版才在這裡載入：桌面版不必多信任一個
+// 外部來源、讓它在 App 的頁面裡執行。
+const GSI_SCRIPT_URL = "https://accounts.google.com/gsi/client";
+
+function loadGoogleIdentityServices() {
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = GSI_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("無法載入 Google 登入元件"));
+    document.head.appendChild(script);
+  });
+}
+
+function initBrowserSignIn(hasSessionToken) {
+  loadGoogleIdentityServices()
+    .then(() => {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleCredentialResponse,
+        auto_select: true,
+      });
+      window.google.accounts.id.renderButton(googleSigninBtnEl, {
+        theme: "outline",
+        size: "medium",
+        shape: "pill",
+        text: "signin",
+      });
+      if (!hasSessionToken) {
+        // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；不保證成功，
+        // 失敗就維持鎖住，使用者自己按登入按鈕即可。
+        window.google.accounts.id.prompt();
+      }
+    })
+    .catch((err) => {
+      console.error("[auth]", err);
+      showToast("無法載入 Google 登入元件，請檢查網路連線後重新整理", "error");
+    });
+}
+
 function initGoogleSignIn() {
+  const hasSessionToken = !!getSessionToken();
   if (DESKTOP_MODE) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -159,31 +206,17 @@ function initGoogleSignIn() {
     googleSigninBtnEl.innerHTML = "";
     googleSigninBtnEl.appendChild(btn);
   } else {
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse,
-      auto_select: true,
-    });
-    window.google.accounts.id.renderButton(googleSigninBtnEl, {
-      theme: "outline",
-      size: "medium",
-      shape: "pill",
-      text: "signin",
-    });
+    initBrowserSignIn(hasSessionToken);
   }
 
   setPageLocked(true);
-  if (getSessionToken()) {
+  if (hasSessionToken) {
     // localStorage 裡已經有存起來的 token，直接拿去問後端還有沒有效——這就是
     // 「重新整理/重開 App 不會登出」的關鍵。先鎖住再問：Render 冷啟動實測
     // 可能超過一分鐘，沒鎖的話使用者會看到一個可以操作、但所有下拉選單都
     // 是空的表單。checkAuthStatus 三條路徑都會正確設定最終狀態。
     showConnectionNotice("正在連線到伺服器…\n如果久未使用，可能需要約 1 分鐘的冷啟動，請稍候。");
     checkAuthStatus();
-  } else if (!DESKTOP_MODE) {
-    // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；不保證成功，
-    // 失敗就維持鎖住，使用者自己按登入按鈕即可。
-    window.google.accounts.id.prompt();
   }
 }
 
@@ -203,9 +236,8 @@ export function initLogin() {
     // 這個按鈕包在 account-slot 裡面，點擊事件會往上冒泡觸發 account-slot
     // 自己的「切換下拉選單開關」監聽器，把剛關好的下拉選單又扳回開啟
     e.stopPropagation();
-    // 桌面版沒有初始化 Google Identity Services，物件雖然因為 <script>
-    // 標籤還是存在，但在沒初始化過的狀態下呼叫它的方法，行為沒有保證。
-    if (!DESKTOP_MODE) {
+    // 桌面版不載入 Google Identity Services；瀏覽器版也可能載入失敗
+    if (!DESKTOP_MODE && window.google && window.google.accounts && window.google.accounts.id) {
       window.google.accounts.id.disableAutoSelect();
     }
     // 讓後端也把這個 session 刪掉，登出應該要是真的登出。刻意不 await：

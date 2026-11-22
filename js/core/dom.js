@@ -9,10 +9,14 @@ export function byId(id) {
   return el;
 }
 
+// 把字串變成可以放進 HTML 的文字，連引號一起跳脫：結果會被放進屬性值
+// （例如 data-id="..."），只跳脫 & < > 的話，值裡的引號會讓屬性提早結束，
+// 後面的內容變成新的屬性。null／undefined 當成空字串，跟以前一樣。
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
 export function escapeHtml(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
+  if (str === null || str === undefined) return "";
+  return String(str).replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
 }
 
 export function setDisabled(elements, disabled) {

@@ -143,6 +143,14 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 主頁左側那塊純文字提示，內容原本直接放在這個 repo、前端用 `fetch()` 讀同目錄檔案——瀏覽器版沒問題，桌面版 `file://` 底下完全行不通。依序試過三種修法都失敗（`XMLHttpRequest`、隱藏 `<iframe>` + `contentDocument`），原因都一樣：`file://` 底下 JS 執行期沒有任何辦法讀到「同目錄另一個檔案」的內容，不管透過哪個瀏覽器 API 包裝都一樣，是平台層級的限制。最後把內容整個移到 `zh-cn-to-tw-backend`，透過一個不需要登入的 API 端點供應，瀏覽器版跟桌面版從此走同一條路徑。完整過程見 `zh-cn-to-tw-backend` README 的對應段落。
 
+### 頁面的安全設定：CSP、Google 腳本只給瀏覽器版、apiBase 只收自己的後端
+
+- **內容安全政策（CSP）**：`index.html` 最前面的 `<meta http-equiv="Content-Security-Policy">` 只允許執行這個 App 自己的腳本，只連得到自己的後端（正式的 Render 網址，以及開發用的 `http://localhost`／`http://127.0.0.1`，本機 OCR 服務也在那裡）。萬一有人能把內容塞進頁面（例如顯示的資料沒跳脫好），也沒辦法從別的地方載入腳本、或把資料送到別的主機。兩個實測撞到的細節：WebKit 的 `'self'` 不認 Mac 版殼的自訂 scheme `zhcntotw://app`，不把 `zhcntotw:` 寫出來，App 自己的腳本會全部被擋下、整頁不會動（瀏覽器裡測不出來，要用真的 WKWebView 才看得到）；Google 登入鈕用 inline style 設定圖示大小，style-src 不允許 inline 的話按鈕會變成一個超大的 G。inline style 本身不能執行程式，它能做的壞事是用 CSS 的 `url()` 把資料送出去，而 img-src、font-src 只允許自己（img 另外允許 `data:`），送不到別的主機。殼用 `evaluateJavaScript`／`ExecuteScriptAsync` 執行的程式、在頁面開始時注入的腳本不受 CSP 影響（Mac 用真的 WKWebView 實測過）。
+- **Google 的登入腳本只在瀏覽器版載入**：桌面版改由殼用系統瀏覽器登入，用不到 Google Identity Services，所以它不寫在 `index.html` 裡，瀏覽器版才由 `js/auth/login.js` 動態載入。桌面版不必多信任一個外部來源在 App 的頁面裡執行。載入失敗時，重新登入直接走「登入失敗」那條路，不會卡在等待狀態。
+- **`?apiBase=` 只收自己的後端**：只接受正式的 Render 網址，或 `http://localhost`、`http://127.0.0.1`（任何 port，不能帶路徑）。登入時 Google 的憑證會送到這個網址，能被指到任意主機等於把憑證交給別人；不接受的值一律改用正式網址（`js/core/config.js`）。
+- **`escapeHtml` 連引號一起跳脫**：結果會被放進屬性值（例如 `data-id="..."`），只跳脫 `& < >` 的話，值裡的引號能讓屬性提早結束。
+- **直接上傳 Word 檔時，被略過的隱藏文字會用對話框告訴使用者**：後端不讀設成「隱藏」的文字（見 `zh-cn-to-tw-backend` 的 README），回應帶回略過的字數（`hidden_text_chars`），`js/core/upload-notice.js` 跳對話框——少讀了內容是使用者需要知道的事，幾秒就消失的 toast 不夠。
+
 ### 檔案結構
 
 ```
@@ -186,7 +194,7 @@ cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
-打開 `http://localhost:8000`，預設會打正式的 Render 網址；要測本機 backend，網址列加 `?apiBase=http://localhost:5001`（後端的 CORS 允許任意 port 的 `localhost`/`127.0.0.1`）。瀏覽器模式下 Stage 1 只會提示要改用桌面版，Stage 2、Stage 3 可以用直接上傳的檔案測。
+打開 `http://localhost:8000`。沒帶 `apiBase` 時打的是同源（這個靜態伺服器沒有 API，會是 404），所以要在網址列帶上：測正式後端用 `?apiBase=https://zh-cn-to-tw-backend.onrender.com`，測本機 backend 用 `?apiBase=http://localhost:5001`（後端的 CORS 允許任意 port 的 `localhost`/`127.0.0.1`）。`apiBase` 只接受這兩種，其他的值一律改用正式網址（見專案報告「頁面的安全設定」）。瀏覽器模式下 Stage 1 只會提示要改用桌面版，Stage 2、Stage 3 可以用直接上傳的檔案測。
 
 ## Part B. 本機測試（模擬桌面版）
 
@@ -370,6 +378,14 @@ When signing in on desktop, the page sends the Google ID Token together with the
 
 The plain-text tip panel on the left originally lived in this repo, read via `fetch()` on a same-directory file — fine in the browser, completely broken under the desktop's `file://`. Three fixes were tried in sequence and all failed (`XMLHttpRequest`, a hidden `<iframe>` + `contentDocument`), for the same underlying reason each time: under `file://`, JS has no way at runtime to read another file in the same directory, regardless of which browser API wraps the attempt — a platform-level limitation, not an API choice. The content was eventually moved entirely into `zh-cn-to-tw-backend`, served through a no-login-required API endpoint, so browser and desktop share one path from then on. Full story in `zh-cn-to-tw-backend`'s README.
 
+### Page Security Settings: CSP, Google's Script Only for the Browser Version, apiBase Only Accepts Our Backends
+
+- **Content Security Policy (CSP)**: the `<meta http-equiv="Content-Security-Policy">` at the top of `index.html` allows only this app's own scripts to run, and only connections to our own backends (the production Render URL, plus `http://localhost` / `http://127.0.0.1` for development, where the local OCR service also lives). Even if someone managed to inject content into the page (for example data displayed without proper escaping), it couldn't load scripts from elsewhere or send data to another host. Two details found by testing: WebKit's `'self'` doesn't match the Mac shell's custom scheme `zhcntotw://app`, so without spelling out `zhcntotw:` all of the app's own scripts are blocked and the page doesn't work (invisible in a browser; it only shows up in a real WKWebView); and the Google sign-in button sizes its icon with an inline style, so without inline styles in style-src the button turns into a giant G. Inline styles can't execute code; the harm they could do is sending data out via CSS `url()`, and img-src and font-src allow only our own origin (img also allows `data:`), so nothing can reach another host. Code the shells run via `evaluateJavaScript` / `ExecuteScriptAsync` and scripts they inject at document start are not affected by the CSP (tested on Mac with a real WKWebView).
+- **Google's sign-in script is loaded only by the browser version**: the desktop version signs in through the shell and the system browser and never uses Google Identity Services, so the script is no longer in `index.html`; `js/auth/login.js` loads it dynamically only in browser mode. The desktop version no longer has to trust an extra external origin running code in the app's page. If loading fails, re-authentication goes straight down the "sign-in failed" path instead of hanging.
+- **`?apiBase=` only accepts our own backends**: only the production Render URL, or `http://localhost` / `http://127.0.0.1` (any port, no path). Google's credential is sent to this URL at sign-in, so letting it point at any host would hand the credential to someone else; anything not accepted falls back to the production URL (`js/core/config.js`).
+- **`escapeHtml` escapes quotes too**: its output is placed in attribute values (e.g. `data-id="..."`), and escaping only `& < >` would let a quote in the value end the attribute early.
+- **When a directly uploaded Word file had hidden text skipped, a dialog tells the user**: the backend doesn't read text set to "hidden" (see `zh-cn-to-tw-backend`'s README) and returns how many characters were skipped (`hidden_text_chars`); `js/core/upload-notice.js` shows a dialog — content left out is something the user needs to know, and a toast that disappears after a few seconds isn't enough.
+
 ### File Layout
 
 ```
@@ -413,7 +429,7 @@ cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
-Open `http://localhost:8000` — this hits the production Render URL by default; to test against a local backend, add `?apiBase=http://localhost:5001` to the URL (the backend's CORS allows any-port `localhost`/`127.0.0.1`). In browser mode Stage 1 only tells you to use the desktop app; Stage 2 and Stage 3 can be tested with directly-uploaded files.
+Open `http://localhost:8000`. Without `apiBase`, requests go to the same origin (this static server has no API, so they 404), so add one to the URL: `?apiBase=https://zh-cn-to-tw-backend.onrender.com` for the production backend, or `?apiBase=http://localhost:5001` for a local backend (the backend's CORS allows any-port `localhost`/`127.0.0.1`). `apiBase` accepts only these two kinds; any other value falls back to the production URL (see the Project Report's "Page Security Settings"). In browser mode Stage 1 only tells you to use the desktop app; Stage 2 and Stage 3 can be tested with directly-uploaded files.
 
 ## Part B. Local Testing (Simulating Desktop Mode)
 
