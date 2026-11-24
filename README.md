@@ -23,6 +23,8 @@ GitHub Release 資產的檔名刻意用純 ASCII（不含 CJK）：早期試過�
 
 頁面最下面的「安裝說明」不是寫在 `index.html` 裡的，是載入時讀這個分支根目錄的 `download_notice.txt`——要改安裝說明就編輯那份純文字檔、commit、push，不用碰 `index.html`。換行會原樣呈現，內容當純文字處理（不解析 HTML）。這份檔案在 2026-10-03 以前放在 `zh-cn-to-tw-backend`、透過 `GET /api/download_notice` 讀取；搬回來是因為這個頁面本來就是靜態站，繞去 Render 只會讓安裝說明在後端休眠時卡在「載入中」、後端掛掉時整段消失。
 
+`index.html` 開頭有一個 Content-Security-Policy meta 標籤，只允許載入同一個站的檔案（`default-src 'none'`，腳本、樣式、圖片、fetch 都只開 `'self'`）。所以樣式放在 `style.css`、讀安裝說明的腳本放在 `notice.js`，頁面裡**不能**再寫 inline 的 `<script>`、`<style>` 或 `style=` 屬性，會被瀏覽器擋下。下載連結是一般的頁面跳轉，不受這個限制；之後如果要載入其他網站的資源（字型、統計），要先把那個來源加進 CSP。
+
 ## 跟 main 分支的關係
 
 跟 `main` 分支沒有共同的檔案、也沒有共同的 git 歷史（獨立的 orphan 分支）——`main` 分支放的是桌面版 App（`zh-cn-to-tw-mac`、`zh-cn-to-tw-windows`）打包時內嵌的網頁原始碼，不會被 GitHub Pages 服務。完整說明見 `main` 分支的 README。

@@ -2,109 +2,13 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
+  <!-- 只允許載入同一個站的檔案；腳本與樣式都放在外部檔案，不開 inline。
+       frame-ancestors 寫在 meta 裡無效，所以不列。 -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>繁化助手下載點</title>
   <link rel="icon" type="image/png" href="favicon.png">
-  <style>
-    :root {
-      color-scheme: light;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: #fff6da;
-      color: #4a3f1f;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC",
-        "Microsoft JhengHei", sans-serif;
-      display: flex;
-      justify-content: center;
-      padding: 3rem 1.25rem;
-      box-sizing: border-box;
-    }
-    main {
-      width: 100%;
-      max-width: 560px;
-    }
-    h1 {
-      font-size: 1.75rem;
-      margin: 0 0 2rem;
-      text-align: center;
-    }
-    section {
-      background: #fffdf5;
-      border: 1px solid #ecdca3;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 1.25rem;
-    }
-    h2 {
-      font-size: 1.15rem;
-      margin: 0 0 1rem;
-    }
-
-    /* 一個版本區塊＝一個版本號小標 + 該版本底下各分流的下載選項。
-       之後同一個平台出新版本，就在同一個 section 裡再加一個
-       .version-block（放在最上面，新版在前）——版本區塊之間的分隔線
-       靠 + 這個相鄰兄弟選擇器自動出現，只有一個版本時完全不會畫出來，
-       不用另外判斷「是不是第一個版本」。 */
-    .version-block + .version-block {
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #ecdca3;
-    }
-    .version-label {
-      margin: 0 0 0.6rem;
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #9a8a54;
-      letter-spacing: 0.02em;
-    }
-    /* 用 grid 切成剛好兩等分，不是 flex 的 space-between——space-between
-       只會把兩塊推到最左/最右，中間那條界線實際上跟著兩塊各自的內容
-       寬度跑，不是真正固定在正中間。grid-template-columns: 1fr 1fr
-       保證第二欄永遠從容器正中間開始，Mac OS 12 那塊固定貼齊中線
-       右側，不受文字/按鈕寬度影響。 */
-    .tier-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
-    .tier {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.5rem;
-    }
-    .tier span {
-      font-size: 0.95rem;
-    }
-    .tier a {
-      display: inline-block;
-      padding: 0.45rem 1rem;
-      border-radius: 8px;
-      background: #4a3f1f;
-      color: #fff6da;
-      text-decoration: none;
-      font-size: 0.9rem;
-      white-space: nowrap;
-    }
-    .empty-note {
-      margin: 0;
-      color: #9a8a54;
-      font-size: 0.9rem;
-    }
-    /* white-space: pre-line 保留 .txt 檔裡的換行——跟主站
-       zh-cn-to-tw-web 的 .notice-text（顯示「阿舍老師的叮嚀」那塊）
-       同一個規則，這裡是同名但獨立的一份，因為這個頁面是完全獨立的
-       orphan branch，沒有共用 style.css。 */
-    .notice-text {
-      margin: 0;
-      font-size: 0.9rem;
-      line-height: 1.7;
-      color: #4a3f1f;
-      white-space: pre-line;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main>
@@ -213,29 +117,6 @@ Mac OS 10.15 改用新的 OCR 引擎，修正辨識結果變成英文亂碼的�
     </section>
   </main>
 
-  <script>
-    // 「安裝說明」的內容來源是這個分支根目錄的 download_notice.txt
-    // （跟這個頁面同目錄、同樣由 GitHub Pages 服務）：維護者編輯那份
-    // 純文字檔、commit、push 即可更新這裡顯示的內容，不用碰這個頁面。
-    // 換行靠 .notice-text 的 white-space: pre-line 原樣呈現；用
-    // textContent 塞進去，檔案內容不會被當成 HTML 解析。
-    //
-    // 刻意讀同目錄的靜態檔、不打後端：這個頁面本來就是靜態站，繞去
-    // 後端只會讓安裝說明在後端休眠時卡在「載入中」、後端掛掉時整段
-    // 消失——而這段正是給還沒裝 App 的人看的。
-    //
-    // cache: "no-cache" 是每次都跟伺服器重新驗證（沒變就回 304），避免
-    // 改完文字之後瀏覽器還拿舊的快取顯示。
-    (function () {
-      var el = document.getElementById("download-notice");
-      fetch("download_notice.txt", { cache: "no-cache" })
-        .then(function (res) {
-          if (!res.ok) throw new Error("HTTP " + res.status);
-          return res.text();
-        })
-        .then(function (text) { el.textContent = text.trim() || "（目前沒有內容）"; })
-        .catch(function () { el.textContent = "（載入失敗）"; });
-    })();
-  </script>
+  <script src="notice.js"></script>
 </body>
 </html>
