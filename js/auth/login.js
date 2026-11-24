@@ -2,16 +2,16 @@
 //
 // 登入後拿到的 Google ID Token 只用來跟後端換一次應用程式自己的 session
 // token（/auth/login），之後一律用 session token（見 js/core/api.js 的說明）。
-// 桌面版不在內嵌 WebView 裡跑 Google 的登入彈出視窗（Google 會限制/降級
-// 內嵌瀏覽器裡的登入流程，實測撞過 window.open 被擋、帳戶選擇視窗越開越多），
-// 改成請桌面殼用系統瀏覽器完成登入，殼再呼叫 handleCredentialResponse()
-// 把結果交回來，後續驗證/儲存/更新畫面跟瀏覽器版共用同一套邏輯。
+// 這份前端只給桌面版用。登入不在內嵌 WebView 裡跑 Google 的登入彈出視窗
+// （Google 會限制/降級內嵌瀏覽器裡的登入流程，實測撞過 window.open 被擋、
+// 帳戶選擇視窗越開越多），而是請桌面殼用系統瀏覽器完成登入，殼再呼叫
+// handleCredentialResponse() 把結果交回來。頁面不載入 Google 的任何腳本。
 //
 // 這個模組只管登入本身；登入狀態改變時用事件通知其他模組：
 // - auth:authorized   授權通過（payload: {email, isAdmin}）
 // - auth:signed-out   回到未登入狀態（各模組把自己的狀態清掉）
 
-import { API_BASE, DESKTOP_MODE, GOOGLE_CLIENT_ID } from "../core/config.js";
+import { API_BASE, DESKTOP_MODE } from "../core/config.js";
 import {
   authHeaders,
   getSessionToken,
@@ -119,8 +119,8 @@ async function checkAuthStatus() {
 // 桌面殼登入完成後會直接呼叫這支（見 js/core/bridge.js），另外帶
 // response.nonce：殼這次登入產生的 nonce 原值，後端用它確認這個 token
 // 是這個 App 自己登入拿到的（見 zh-cn-to-tw-backend 的 auth_utils/auth.py）。
-// 瀏覽器版（Google Identity Services）沒有這個欄位，JSON.stringify 會略過
-// undefined 的欄位，送出去的內容跟以前一樣。
+// 還沒帶 nonce 的舊版殼沒有這個欄位，JSON.stringify 會略過 undefined 的
+// 欄位，送出去的內容跟以前一樣。
 async function handleCredentialResponse(response) {
   try {
     const res = await fetch(`${API_BASE}/auth/login`, {
@@ -145,69 +145,28 @@ async function handleCredentialResponse(response) {
   }
 }
 
-// Google Identity Services 的腳本只有瀏覽器版用得到（桌面版改由殼用系統瀏覽器
-// 登入），所以不寫在 index.html 裡，瀏覽器版才在這裡載入：桌面版不必多信任一個
-// 外部來源、讓它在 App 的頁面裡執行。
-const GSI_SCRIPT_URL = "https://accounts.google.com/gsi/client";
-
-function loadGoogleIdentityServices() {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.accounts && window.google.accounts.id) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = GSI_SCRIPT_URL;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("無法載入 Google 登入元件"));
-    document.head.appendChild(script);
-  });
-}
-
-function initBrowserSignIn(hasSessionToken) {
-  loadGoogleIdentityServices()
-    .then(() => {
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleCredentialResponse,
-        auto_select: true,
-      });
-      window.google.accounts.id.renderButton(googleSigninBtnEl, {
-        theme: "outline",
-        size: "medium",
-        shape: "pill",
-        text: "signin",
-      });
-      if (!hasSessionToken) {
-        // 瀏覽器裡如果還留著 Google 自己的登入狀態，嘗試靜默登入；不保證成功，
-        // 失敗就維持鎖住，使用者自己按登入按鈕即可。
-        window.google.accounts.id.prompt();
-      }
-    })
-    .catch((err) => {
-      console.error("[auth]", err);
-      showToast("無法載入 Google 登入元件，請檢查網路連線後重新整理", "error");
-    });
-}
-
 function initGoogleSignIn() {
-  const hasSessionToken = !!getSessionToken();
-  if (DESKTOP_MODE) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "desktop-signin-btn";
-    btn.textContent = "使用 Google 帳戶登入";
-    btn.addEventListener("click", () => {
-      postToShell("desktopSignIn", {});
-    });
-    // 不用 replaceChildren()：它要 Safari 14，10.15 出廠的 Safari 13.0 沒有，
-    // 呼叫下去是 TypeError，登入按鈕就整個出不來
-    googleSigninBtnEl.innerHTML = "";
-    googleSigninBtnEl.appendChild(btn);
-  } else {
-    initBrowserSignIn(hasSessionToken);
+  if (!DESKTOP_MODE) {
+    // 不是桌面殼載入的（例如直接用瀏覽器打開）：沒有任何方式能登入，維持
+    // 鎖住並說明原因。以前的純瀏覽器版已經停用
+    googleSigninBtnEl.hidden = true;
+    setPageLocked(true);
+    showConnectionNotice("請使用桌面版 App。", true);
+    return;
   }
+
+  const hasSessionToken = !!getSessionToken();
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "desktop-signin-btn";
+  btn.textContent = "使用 Google 帳戶登入";
+  btn.addEventListener("click", () => {
+    postToShell("desktopSignIn", {});
+  });
+  // 不用 replaceChildren()：它要 Safari 14，10.15 出廠的 Safari 13.0 沒有，
+  // 呼叫下去是 TypeError，登入按鈕就整個出不來
+  googleSigninBtnEl.innerHTML = "";
+  googleSigninBtnEl.appendChild(btn);
 
   setPageLocked(true);
   if (hasSessionToken) {
@@ -236,10 +195,6 @@ export function initLogin() {
     // 這個按鈕包在 account-slot 裡面，點擊事件會往上冒泡觸發 account-slot
     // 自己的「切換下拉選單開關」監聽器，把剛關好的下拉選單又扳回開啟
     e.stopPropagation();
-    // 桌面版不載入 Google Identity Services；瀏覽器版也可能載入失敗
-    if (!DESKTOP_MODE && window.google && window.google.accounts && window.google.accounts.id) {
-      window.google.accounts.id.disableAutoSelect();
-    }
     // 讓後端也把這個 session 刪掉，登出應該要是真的登出。刻意不 await：
     // 失敗（例如網路問題）也不該擋住使用者登出。
     fetch(`${API_BASE}/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {});

@@ -23,7 +23,7 @@ Vanilla JavaScript（無框架、無建置流程），被桌面殼內嵌載入�
 - **Stage 2 通用修改（2.0 新增）**：套用範本修改——後端用程式把半形標點轉全形、套用「修改前 → 修改後」的替換範本（半形空格一律不動），產出修改報告；可選擇請 LLM 看過字詞類的修改、提醒可能改錯的地方（只提醒、不改字）。
 - **Stage 3 校對**：LLM 挑出錯字／用詞問題，使用者勾選要套用的建議。
 
-判斷現在是不是桌面殼載入的，靠網址的查詢參數：桌面殼載入頁面時會帶 `?desktop=1&ocrToken=<隨機值>&apiBase=<Render網址>&appMajor=..&appMinor=..&osTier=..`，`js/core/config.js` 一開始就讀這些參數。有 `desktop=1` 時 Stage 1 的 PDF 先送本機的 `zh-cn-to-tw-ocr-service`（Mac 10.15 分流改用殼內嵌的 Tesseract）做 OCR，OCR 完的文字才送 Render 後端。沒有這些參數（純瀏覽器打開）時，按 Stage 1 只會提示要改用桌面版、不會送出任何請求；Stage 2、Stage 3 用直接上傳的 .docx/.txt 不需要 OCR，照樣能用。
+判斷現在是不是桌面殼載入的，靠網址的查詢參數：桌面殼載入頁面時會帶 `?desktop=1&ocrToken=<隨機值>&apiBase=<Render網址>&appMajor=..&appMinor=..&osTier=..`，`js/core/config.js` 一開始就讀這些參數。有 `desktop=1` 時 Stage 1 的 PDF 先送本機的 `zh-cn-to-tw-ocr-service`（Mac 10.15 分流改用殼內嵌的 Tesseract）做 OCR，OCR 完的文字才送 Render 後端。沒有這些參數（直接用瀏覽器打開）時，頁面維持鎖住、只顯示「請使用桌面版 App」，也沒有登入按鈕：以前的純瀏覽器版已經停用，GitHub Pages 的網址現在只放下載頁，後端與本機 OCR 服務的 CORS 也不再放行它。
 
 ### 系統架構
 
@@ -110,7 +110,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 桌面殼載入頁面時，網址除了 `desktop=1&ocrToken=...&apiBase=...`，還會多帶 `appMajor`/`appMinor`（這個 App 自己的版本號，只有兩碼，見各殼的 README）。每個真正會開始跑工作的動作——Stage 1 送出、Stage 2 套用、Stage 3 開始校對與重新校對，包含自動接續觸發的那幾次——都先呼叫 `js/core/version.js` 的 `checkVersionOrBlock()` 打 `GET /api/version_check`，把 `appMajor`/`appMinor` 帶過去問 backend 這個版本夠不夠新。
 
-`force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。純瀏覽器開啟（沒有 `desktop=1`）完全不會觸發這個檢查，瀏覽器版沒有「App 版本」這個概念。
+`force_update` 是 `true` 就跳出對話框告知使用者版本過舊、附上更新頁網址（`https://beethoreven.github.io/zh-cn-to-tw-web/`，見上方「為什麼這個 repo 的內容不會出現在 GitHub Pages 上」），並且**擋下這次操作**（呼叫端直接 `return`，不會真的送出工作）。查詢本身失敗（網路問題、Render 剛好在冷啟動）視為不擋——查不到版本狀態不該變成擋住使用者工作的理由，只有明確查到「版本太舊」才生效。沒有 `desktop=1` 的頁面不能登入，走不到這一步。
 
 網址上還會多帶一個 `osTier`（Mac 是 `"11+"` 或 `"10.15"`，省略當 `"11+"`；Windows 是 `"windows"`）——Mac 桌面殼分成兩個獨立版控的 build，`10.15` 那包（部署目標壓到 10.15，見 `zh-cn-to-tw-mac` README「版本分流」）Stage 1 改用殼內嵌的 Tesseract 做 OCR，不透過 `zh-cn-to-tw-ocr-service`。這個值決定：
 
@@ -137,16 +137,16 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 登入後拿到的 session token（見 `zh-cn-to-tw-backend` 的說明，不是原始 Google ID Token）存進 `localStorage`。這在桌面版特別重要——`localStorage` 是照來源分開存的，桌面殼用固定來源載入頁面（1.x 是固定的 `file://` 路徑，2.0 起是固定的虛擬主機／自訂 scheme），登入狀態才能真正跨次啟動保留（見各殼 README 的完整說明）。來源一換就讀不到舊的登入狀態，所以 1.x 升級到 2.0 要重新登入一次。
 
-桌面版登入時，網頁把 Google ID Token 跟殼這次登入產生的 nonce 原值一起送到 `/auth/login`（`js/auth/login.js` 的 `handleCredentialResponse`），後端確認兩者對得上才換發 session，見 `zh-cn-to-tw-backend` 的 README「登入」一節。瀏覽器版（Google Identity Services）沒有 nonce，送出去的內容跟以前一樣。
+桌面版登入時，網頁把 Google ID Token 跟殼這次登入產生的 nonce 原值一起送到 `/auth/login`（`js/auth/login.js` 的 `handleCredentialResponse`），後端確認兩者對得上才換發 session，見 `zh-cn-to-tw-backend` 的 README「登入」一節。還沒帶 nonce 的舊版殼沒有這個欄位，送出去的內容跟以前一樣。
 
 ### 「阿舍老師的叮嚀」：三次失敗才找到的解法
 
 主頁左側那塊純文字提示，內容原本直接放在這個 repo、前端用 `fetch()` 讀同目錄檔案——瀏覽器版沒問題，桌面版 `file://` 底下完全行不通。依序試過三種修法都失敗（`XMLHttpRequest`、隱藏 `<iframe>` + `contentDocument`），原因都一樣：`file://` 底下 JS 執行期沒有任何辦法讀到「同目錄另一個檔案」的內容，不管透過哪個瀏覽器 API 包裝都一樣，是平台層級的限制。最後把內容整個移到 `zh-cn-to-tw-backend`，透過一個不需要登入的 API 端點供應，瀏覽器版跟桌面版從此走同一條路徑。完整過程見 `zh-cn-to-tw-backend` README 的對應段落。
 
-### 頁面的安全設定：CSP、Google 腳本只給瀏覽器版、apiBase 只收自己的後端
+### 頁面的安全設定：CSP、不載入 Google 的腳本、apiBase 只收自己的後端
 
-- **內容安全政策（CSP）**：`index.html` 最前面的 `<meta http-equiv="Content-Security-Policy">` 只允許執行這個 App 自己的腳本，只連得到自己的後端（正式的 Render 網址，以及開發用的 `http://localhost`／`http://127.0.0.1`，本機 OCR 服務也在那裡）。萬一有人能把內容塞進頁面（例如顯示的資料沒跳脫好），也沒辦法從別的地方載入腳本、或把資料送到別的主機。兩個實測撞到的細節：WebKit 的 `'self'` 不認 Mac 版殼的自訂 scheme `zhcntotw://app`，不把 `zhcntotw:` 寫出來，App 自己的腳本會全部被擋下、整頁不會動（瀏覽器裡測不出來，要用真的 WKWebView 才看得到）；Google 登入鈕用 inline style 設定圖示大小，style-src 不允許 inline 的話按鈕會變成一個超大的 G。inline style 本身不能執行程式，它能做的壞事是用 CSS 的 `url()` 把資料送出去，而 img-src、font-src 只允許自己（img 另外允許 `data:`），送不到別的主機。殼用 `evaluateJavaScript`／`ExecuteScriptAsync` 執行的程式、在頁面開始時注入的腳本不受 CSP 影響（Mac 用真的 WKWebView 實測過）。
-- **Google 的登入腳本只在瀏覽器版載入**：桌面版改由殼用系統瀏覽器登入，用不到 Google Identity Services，所以它不寫在 `index.html` 裡，瀏覽器版才由 `js/auth/login.js` 動態載入。桌面版不必多信任一個外部來源在 App 的頁面裡執行。載入失敗時，重新登入直接走「登入失敗」那條路，不會卡在等待狀態。
+- **內容安全政策（CSP）**：`index.html` 最前面的 `<meta http-equiv="Content-Security-Policy">` 只允許執行這個 App 自己的腳本，只連得到自己的後端（正式的 Render 網址，以及開發用的 `http://localhost`／`http://127.0.0.1`，本機 OCR 服務也在那裡）。萬一有人能把內容塞進頁面（例如顯示的資料沒跳脫好），也沒辦法從別的地方載入腳本、或把資料送到別的主機。兩個實測撞到的細節：WebKit 的 `'self'` 不認 Mac 版殼的自訂 scheme `zhcntotw://app`，不把 `zhcntotw:` 寫出來，App 自己的腳本會全部被擋下、整頁不會動（瀏覽器裡測不出來，要用真的 WKWebView 才看得到）；style-src 不允許 inline style，頁面的樣式全部在 `css/` 的樣式表裡（以前為了瀏覽器版的 Google 登入鈕放行過 inline style，瀏覽器版停用後拿掉了）。殼用 `evaluateJavaScript`／`ExecuteScriptAsync` 執行的程式、在頁面開始時注入的腳本不受 CSP 影響（Mac 用真的 WKWebView 實測過）。
+- **不載入 Google 的任何腳本**：登入由殼在系統瀏覽器完成，頁面用不到 Google Identity Services，CSP 也不放行 Google 的網址。App 的頁面不必多信任一個外部來源在裡面執行。
 - **`?apiBase=` 只收自己的後端**：只接受正式的 Render 網址，或 `http://localhost`、`http://127.0.0.1`（任何 port，不能帶路徑）。登入時 Google 的憑證會送到這個網址，能被指到任意主機等於把憑證交給別人；不接受的值一律改用正式網址（`js/core/config.js`）。
 - **`escapeHtml` 連引號一起跳脫**：結果會被放進屬性值（例如 `data-id="..."`），只跳脫 `& < >` 的話，值裡的引號能讓屬性提早結束。
 - **直接上傳 Word 檔時，被略過的隱藏文字會用對話框告訴使用者**：後端不讀設成「隱藏」的文字（見 `zh-cn-to-tw-backend` 的 README），回應帶回略過的字數（`hidden_text_chars`），`js/core/upload-notice.js` 跳對話框——少讀了內容是使用者需要知道的事，幾秒就消失的 toast 不夠。
@@ -194,7 +194,7 @@ cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
-打開 `http://localhost:8000`。沒帶 `apiBase` 時打的是同源（這個靜態伺服器沒有 API，會是 404），所以要在網址列帶上：測正式後端用 `?apiBase=https://zh-cn-to-tw-backend.onrender.com`，測本機 backend 用 `?apiBase=http://localhost:5001`（後端的 CORS 允許任意 port 的 `localhost`/`127.0.0.1`）。`apiBase` 只接受這兩種，其他的值一律改用正式網址（見專案報告「頁面的安全設定」）。瀏覽器模式下 Stage 1 只會提示要改用桌面版，Stage 2、Stage 3 可以用直接上傳的檔案測。
+打開 `http://localhost:8000`。沒帶 `apiBase` 時打的是同源（這個靜態伺服器沒有 API，會是 404），所以要在網址列帶上：測正式後端用 `?apiBase=https://zh-cn-to-tw-backend.onrender.com`，測本機 backend 用 `?apiBase=http://localhost:5001`（後端的 CORS 允許任意 port 的 `localhost`/`127.0.0.1`）。`apiBase` 只接受這兩種，其他的值一律改用正式網址（見專案報告「頁面的安全設定」）。沒帶 `desktop=1` 時頁面只會顯示「請使用桌面版 App」，要看畫面請照 Part B 帶齊參數。
 
 ## Part B. 本機測試（模擬桌面版）
 
@@ -204,7 +204,7 @@ python3 -m http.server 8000
 http://localhost:8000/?desktop=1&ocrToken=test&apiBase=http://localhost:5001
 ```
 
-這樣會嘗試走本機 OCR 那條路，但因為沒有真正的桌面殼幫你把 `window.__OCR_PORT__` 寫進去、也沒有 `ocrService` 這個 message handler，本機 OCR 相關功能實際上叫不動——這個模式主要是拿來看 UI 判斷邏輯對不對，真正端到端測試桌面路徑要在桌面殼裡測（見 Part C）。
+這樣會嘗試走本機 OCR 那條路，但因為沒有真正的桌面殼幫你把 `window.__OCR_PORT__` 寫進去、也沒有 `ocrService` 這個 message handler，本機 OCR 相關功能實際上叫不動——登入按鈕同樣要靠殼才能完成登入。這個模式主要是拿來看 UI 判斷邏輯對不對，要登入、真正端到端測試桌面路徑要在桌面殼裡測（見 Part C）。
 
 ## Part C. 在桌面殼裡測還沒合併的前端
 
@@ -258,7 +258,7 @@ Processing runs in three Stages (from 2.0; 1.x had two, and 1.x's Stage 2 is tod
 - **Stage 2 General Edits (new in 2.0)**: Apply Template — the backend, in plain code, converts half-width punctuation to full-width and applies a "before → after" replacement template (half-width spaces are never touched), and produces an edit report; optionally, an LLM looks over the word-level edits and flags ones that may be wrong (it only flags; it never changes text).
 - **Stage 3 Proofread**: an LLM picks out typos/wording problems, and the user ticks the suggestions to apply.
 
-Whether the page was loaded by a desktop shell is determined from URL query parameters: the shell loads the page with `?desktop=1&ocrToken=<random>&apiBase=<Render URL>&appMajor=..&appMinor=..&osTier=..`, and `js/core/config.js` reads these at startup. With `desktop=1`, Stage 1 first sends the PDF to the local `zh-cn-to-tw-ocr-service` (a shell-bundled Tesseract on the Mac 10.15 tier) for OCR, and only the resulting text goes to the Render backend. Without those parameters (a plain browser), pressing Stage 1 only shows a notice to use the desktop app and sends no request; Stage 2 and Stage 3 need no OCR and still work with a directly-uploaded .docx/.txt.
+Whether the page was loaded by a desktop shell is determined from URL query parameters: the shell loads the page with `?desktop=1&ocrToken=<random>&apiBase=<Render URL>&appMajor=..&appMinor=..&osTier=..`, and `js/core/config.js` reads these at startup. With `desktop=1`, Stage 1 first sends the PDF to the local `zh-cn-to-tw-ocr-service` (a shell-bundled Tesseract on the Mac 10.15 tier) for OCR, and only the resulting text goes to the Render backend. Without those parameters (opened directly in a browser), the page stays locked and only shows "請使用桌面版 App" (use the desktop app), with no sign-in button: the old browser-only version has been retired, the GitHub Pages URL now serves only the download page, and neither the backend nor the local OCR service allows it in CORS any more.
 
 ### System Architecture
 
@@ -345,7 +345,7 @@ This protection only holds while a job is genuinely **running** — it lifts the
 
 When a desktop shell loads the page, the URL carries `appMajor`/`appMinor` alongside `desktop=1&ocrToken=...&apiBase=...` — the app's own version number, only two digits (see each shell's README). Every action that actually kicks off work — Stage 1 submit, Stage 2 apply, Stage 3 start and rerun, including the ones triggered by chaining — first calls `checkVersionOrBlock()` in `js/core/version.js`, which hits `GET /api/version_check` with `appMajor`/`appMinor` to ask the backend whether this version is new enough.
 
-If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. Plain browser opens (no `desktop=1`) never trigger this check at all — the browser build has no concept of an "app version."
+If `force_update` comes back `true`, it shows a dialog telling the user their version is too old, with a link to the update page (`https://beethoreven.github.io/zh-cn-to-tw-web/`, see "Why This Repo's Content Never Appears on GitHub Pages" above), and **blocks the action** — the caller just `return`s, no work actually gets submitted. A failed query (network hiccup, Render mid-cold-start) is treated as non-blocking — being unable to check the version shouldn't be a reason to block the user's work; only an explicit "version too old" answer takes effect. A page without `desktop=1` can't sign in, so it never gets this far.
 
 The URL also carries `osTier` (on Mac `"11+"` or `"10.15"`, defaulting to `"11+"` if absent; on Windows `"windows"`) — the Mac shell ships as two independently-versioned builds, and the `10.15` one (deployment target down at 10.15, see `zh-cn-to-tw-mac`'s README, "Version Tiers") does Stage 1 OCR with a shell-bundled Tesseract instead of `zh-cn-to-tw-ocr-service`. This value drives:
 
@@ -372,16 +372,16 @@ It now updates only "on login" and "at the end of each Stage (including failure/
 
 The session token obtained after login (see `zh-cn-to-tw-backend`'s notes — not the raw Google ID Token) is stored in `localStorage`. This matters especially on desktop — `localStorage` is kept per origin, and it's because the desktop shells load the page from a fixed origin (a fixed `file://` path in 1.x; a fixed virtual host / custom scheme from 2.0) that sign-in actually survives across app restarts (see each shell's README for the full story). A changed origin can't read the old sign-in, which is why upgrading from 1.x to 2.0 means signing in once more.
 
-When signing in on desktop, the page sends the Google ID Token together with the raw nonce the shell generated for this sign-in to `/auth/login` (`handleCredentialResponse` in `js/auth/login.js`), and the backend issues a session only if the two match — see the "Sign-In" section of `zh-cn-to-tw-backend`'s README. The browser version (Google Identity Services) has no nonce, and what it sends is unchanged.
+When signing in on desktop, the page sends the Google ID Token together with the raw nonce the shell generated for this sign-in to `/auth/login` (`handleCredentialResponse` in `js/auth/login.js`), and the backend issues a session only if the two match — see the "Sign-In" section of `zh-cn-to-tw-backend`'s README. Older shells that don't carry a nonce have no such field, and what they send is unchanged.
 
 ### The "Teacher's Notes" Sidebar: Three Failed Attempts Before the Fix
 
 The plain-text tip panel on the left originally lived in this repo, read via `fetch()` on a same-directory file — fine in the browser, completely broken under the desktop's `file://`. Three fixes were tried in sequence and all failed (`XMLHttpRequest`, a hidden `<iframe>` + `contentDocument`), for the same underlying reason each time: under `file://`, JS has no way at runtime to read another file in the same directory, regardless of which browser API wraps the attempt — a platform-level limitation, not an API choice. The content was eventually moved entirely into `zh-cn-to-tw-backend`, served through a no-login-required API endpoint, so browser and desktop share one path from then on. Full story in `zh-cn-to-tw-backend`'s README.
 
-### Page Security Settings: CSP, Google's Script Only for the Browser Version, apiBase Only Accepts Our Backends
+### Page Security Settings: CSP, No Google Scripts, apiBase Only Accepts Our Backends
 
-- **Content Security Policy (CSP)**: the `<meta http-equiv="Content-Security-Policy">` at the top of `index.html` allows only this app's own scripts to run, and only connections to our own backends (the production Render URL, plus `http://localhost` / `http://127.0.0.1` for development, where the local OCR service also lives). Even if someone managed to inject content into the page (for example data displayed without proper escaping), it couldn't load scripts from elsewhere or send data to another host. Two details found by testing: WebKit's `'self'` doesn't match the Mac shell's custom scheme `zhcntotw://app`, so without spelling out `zhcntotw:` all of the app's own scripts are blocked and the page doesn't work (invisible in a browser; it only shows up in a real WKWebView); and the Google sign-in button sizes its icon with an inline style, so without inline styles in style-src the button turns into a giant G. Inline styles can't execute code; the harm they could do is sending data out via CSS `url()`, and img-src and font-src allow only our own origin (img also allows `data:`), so nothing can reach another host. Code the shells run via `evaluateJavaScript` / `ExecuteScriptAsync` and scripts they inject at document start are not affected by the CSP (tested on Mac with a real WKWebView).
-- **Google's sign-in script is loaded only by the browser version**: the desktop version signs in through the shell and the system browser and never uses Google Identity Services, so the script is no longer in `index.html`; `js/auth/login.js` loads it dynamically only in browser mode. The desktop version no longer has to trust an extra external origin running code in the app's page. If loading fails, re-authentication goes straight down the "sign-in failed" path instead of hanging.
+- **Content Security Policy (CSP)**: the `<meta http-equiv="Content-Security-Policy">` at the top of `index.html` allows only this app's own scripts to run, and only connections to our own backends (the production Render URL, plus `http://localhost` / `http://127.0.0.1` for development, where the local OCR service also lives). Even if someone managed to inject content into the page (for example data displayed without proper escaping), it couldn't load scripts from elsewhere or send data to another host. Two details found by testing: WebKit's `'self'` doesn't match the Mac shell's custom scheme `zhcntotw://app`, so without spelling out `zhcntotw:` all of the app's own scripts are blocked and the page doesn't work (invisible in a browser; it only shows up in a real WKWebView); and style-src does not allow inline styles — all of the page's styling lives in the stylesheets under `css/` (inline styles used to be allowed for the browser version's Google sign-in button, and were removed when the browser version was retired). Code the shells run via `evaluateJavaScript` / `ExecuteScriptAsync` and scripts they inject at document start are not affected by the CSP (tested on Mac with a real WKWebView).
+- **No Google scripts are loaded at all**: sign-in happens in the system browser through the shell, so the page never uses Google Identity Services and the CSP doesn't allow Google's URLs. The app's page doesn't have to trust an extra external origin running code inside it.
 - **`?apiBase=` only accepts our own backends**: only the production Render URL, or `http://localhost` / `http://127.0.0.1` (any port, no path). Google's credential is sent to this URL at sign-in, so letting it point at any host would hand the credential to someone else; anything not accepted falls back to the production URL (`js/core/config.js`).
 - **`escapeHtml` escapes quotes too**: its output is placed in attribute values (e.g. `data-id="..."`), and escaping only `& < >` would let a quote in the value end the attribute early.
 - **When a directly uploaded Word file had hidden text skipped, a dialog tells the user**: the backend doesn't read text set to "hidden" (see `zh-cn-to-tw-backend`'s README) and returns how many characters were skipped (`hidden_text_chars`); `js/core/upload-notice.js` shows a dialog — content left out is something the user needs to know, and a toast that disappears after a few seconds isn't enough.
@@ -429,7 +429,7 @@ cd zh-cn-to-tw-web
 python3 -m http.server 8000
 ```
 
-Open `http://localhost:8000`. Without `apiBase`, requests go to the same origin (this static server has no API, so they 404), so add one to the URL: `?apiBase=https://zh-cn-to-tw-backend.onrender.com` for the production backend, or `?apiBase=http://localhost:5001` for a local backend (the backend's CORS allows any-port `localhost`/`127.0.0.1`). `apiBase` accepts only these two kinds; any other value falls back to the production URL (see the Project Report's "Page Security Settings"). In browser mode Stage 1 only tells you to use the desktop app; Stage 2 and Stage 3 can be tested with directly-uploaded files.
+Open `http://localhost:8000`. Without `apiBase`, requests go to the same origin (this static server has no API, so they 404), so add one to the URL: `?apiBase=https://zh-cn-to-tw-backend.onrender.com` for the production backend, or `?apiBase=http://localhost:5001` for a local backend (the backend's CORS allows any-port `localhost`/`127.0.0.1`). `apiBase` accepts only these two kinds; any other value falls back to the production URL (see the Project Report's "Page Security Settings"). Without `desktop=1` the page only shows "請使用桌面版 App"; to see the UI, add the parameters as in Part B.
 
 ## Part B. Local Testing (Simulating Desktop Mode)
 
@@ -439,7 +439,7 @@ Add the query parameters desktop-mode detection needs:
 http://localhost:8000/?desktop=1&ocrToken=test&apiBase=http://localhost:5001
 ```
 
-This will attempt the local-OCR path, but since there's no real desktop shell writing `window.__OCR_PORT__` or providing an `ocrService` message handler, local OCR won't actually work — this mode is mainly useful for checking the UI's branching logic. True end-to-end testing of the desktop path has to happen inside a desktop shell (see Part C).
+This will attempt the local-OCR path, but since there's no real desktop shell writing `window.__OCR_PORT__` or providing an `ocrService` message handler, local OCR won't actually work — the sign-in button likewise needs a shell to complete sign-in. This mode is mainly useful for checking the UI's branching logic; signing in and true end-to-end testing of the desktop path have to happen inside a desktop shell (see Part C).
 
 ## Part C. Testing an Unmerged Frontend Inside a Desktop Shell
 

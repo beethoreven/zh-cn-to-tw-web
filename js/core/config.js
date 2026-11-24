@@ -45,11 +45,8 @@ function isAllowedApiBase(value) {
 }
 
 function resolveApiBase(override) {
-  if (override === null) {
-    // 沒帶參數：預設「同源」（相對路徑），例外是 GitHub Pages 上的舊純網頁版，
-    // 那裡沒有 API 可以打，只能打 Render
-    return window.location.hostname.endsWith("github.io") ? PRODUCTION_API_BASE : "";
-  }
+  // 沒帶參數：預設「同源」（相對路徑）。桌面殼一定會帶 apiBase
+  if (override === null) return "";
   if (isAllowedApiBase(override)) return override.replace(/\/$/, "");
   console.warn("[config] 不接受這個 apiBase，改用正式網址");
   return PRODUCTION_API_BASE;
@@ -76,7 +73,6 @@ export const DESKTOP_APP_MINOR = Number(paramOr("appMinor", "0"));
 // GET /api/version_check 的 os_version 參數用同一套字串。
 export const DESKTOP_OS_TIER = paramOr("osTier", "11+");
 
-export const GOOGLE_CLIENT_ID = "415031055130-73moi9aantfm5hjojmt1r0isk2uo35mr.apps.googleusercontent.com";
 export const SESSION_TOKEN_STORAGE_KEY = "ztw_session_token";
 
 // 「個人專案」：所有人都能選的共用專案，固定 id=1（跟後端

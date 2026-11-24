@@ -4,12 +4,10 @@ import {
   API_BASE,
   DESKTOP_APP_MAJOR,
   DESKTOP_APP_MINOR,
-  DESKTOP_MODE,
   DESKTOP_OS_TIER,
 } from "./config.js";
 
-// 在真的要開始任何一個 Stage 之前檢查有沒有被要求強制更新。只有桌面版
-// 會檢查——瀏覽器版沒有「App 版本」這個概念。回傳 true 代表可以繼續，
+// 在真的要開始任何一個 Stage 之前檢查有沒有被要求強制更新。回傳 true 代表可以繼續，
 // false 代表被擋下來，呼叫端要直接 return。查詢本身失敗（網路問題、
 // backend 還在冷啟動）視為不擋：查不到版本狀態不該變成擋住使用者工作的
 // 理由，這個檢查只在明確查到「版本太舊」時才生效。
@@ -25,7 +23,6 @@ function versionCheckKey() {
 }
 
 export async function checkVersionOrBlock() {
-  if (!DESKTOP_MODE) return true;
   const key = versionCheckKey();
   let data;
   try {

@@ -52,12 +52,10 @@ export function isReauthInFlight() {
 function triggerReauth() {
   if (DESKTOP_MODE) {
     postToShell("desktopSignIn", {});
-  } else if (window.google && window.google.accounts && window.google.accounts.id) {
-    window.google.accounts.id.prompt();
   } else {
-    // 瀏覽器版的 Google 登入元件沒載入成功（見 js/auth/login.js）：直接走登入
-    // 失敗那條路，不然等重新登入的請求會永遠卡住
-    handleDesktopSignInFailed("無法載入 Google 登入元件");
+    // 不是桌面殼載入的頁面沒有人能完成登入：直接走登入失敗那條路，不然等
+    // 重新登入的請求會永遠卡住
+    handleDesktopSignInFailed("請使用桌面版 App");
   }
 }
 

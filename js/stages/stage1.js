@@ -1,7 +1,7 @@
 // Stage 1：簡轉繁。PDF 在本機 OCR（js/stages/ocr.js），文字送到後端做
 // OpenCC 簡轉繁與（選配的）LLM 前置處理／潤飾，前端輪詢進度。
 
-import { API_BASE, DESKTOP_MODE, DESKTOP_OS_TIER, PERSONAL_PROJECT_ERROR_MESSAGES } from "../core/config.js";
+import { API_BASE, DESKTOP_OS_TIER, PERSONAL_PROJECT_ERROR_MESSAGES } from "../core/config.js";
 import { authedFetch, errorFromResponse, isReauthInFlight } from "../core/api.js";
 import { byId, createLogRenderer, setDisabled, validateBoundedInput } from "../core/dom.js";
 import { downloadViaAuthedFetch } from "../core/download.js";
@@ -314,11 +314,6 @@ async function submit() {
   const dpiError = validateBoundedInput(dpiInput, "PDF 轉圖片解析度（DPI）");
   if (dpiError) {
     alert(dpiError);
-    return;
-  }
-  // OCR 一律在使用者本機做，backend 已經沒有接收 PDF 的路徑。
-  if (!DESKTOP_MODE) {
-    showToast("Stage 1 需要使用桌面版 App（OCR 在本機執行）", "error");
     return;
   }
 
