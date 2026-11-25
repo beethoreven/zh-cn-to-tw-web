@@ -21,6 +21,8 @@
 Word 檔含有隱藏文字時會提示。
 Stage 1 移除潤飾開關。
 Windows 解除安裝時可選擇是否一併刪除登入狀態與設定。
+Mac OS 11～13 修正本機 OCR 無法執行的問題。
+Mac 第一次使用本機 OCR 需要較長的啟動時間，不再顯示啟動逾時。
 
 2.2：
 提升OCR辨識效力。
@@ -39,51 +41,24 @@ Mac OS 10.15 改用新的 OCR 引擎，修正辨識結果變成英文亂碼的�
 
     <section>
       <h2>Mac</h2>
-      <div class="version-block">
-        <p class="version-label">2.2</p>
-        <div class="tier-row">
-          <div class="tier">
-            <span>Mac OS 11（含）以上</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.2-11-plus/ZhCnToTw-2.2-11+.dmg">下載</a>
-          </div>
-          <div class="tier">
-            <span>Mac OS 10.15</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.2-10-15/ZhCnToTw-2.2-10.15.dmg">下載</a>
-          </div>
-        </div>
-      </div>
-      <div class="version-block">
-        <p class="version-label">2.1</p>
-        <div class="tier-row">
-          <div class="tier">
-            <span>Mac OS 11（含）以上</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.1-11-plus/ZhCnToTw-2.1-11+.dmg">下載</a>
-          </div>
-          <div class="tier">
-            <span>Mac OS 10.15</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.1-10-15/ZhCnToTw-2.1-10.15.dmg">下載</a>
-          </div>
-        </div>
-      </div>
-      <div class="version-block">
-        <p class="version-label">2.0</p>
-        <div class="tier-row">
-          <div class="tier">
-            <span>Mac OS 11（含）以上</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.0-11-plus/ZhCnToTw-2.0-11+.dmg">下載</a>
-          </div>
-          <div class="tier">
-            <span>Mac OS 10.15</span>
-            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.0-10-15/ZhCnToTw-2.0-10.15.dmg">下載</a>
-          </div>
-        </div>
-      </div>
-      <!-- 之後出新版本，在這個 section 裡、上面這個 .version-block
-           之前再插一個新的 .version-block（放最上面，新版在前）即可，
+      <!-- 每次出新版就新增一個 .version-block（放最上面，新版在前），
            分隔線靠 .version-block + .version-block 這個相鄰兄弟選擇器
-           自動出現，不用改其他地方。保留舊版供人回退：不要改寫既有的
-           .version-block，改寫的話舊版本的下載連結會消失、不留任何
-           痕跡。 -->
+           自動出現，不用改其他地方。舊版本只有在已經不該再被使用時才移除
+           （例如被強制更新淘汰、min_version 已經超過它），2.3 起舊版都
+           已移除。 -->
+      <div class="version-block">
+        <p class="version-label">2.3</p>
+        <div class="tier-row">
+          <div class="tier">
+            <span>Mac OS 11（含）以上</span>
+            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.3-11-plus/ZhCnToTw-2.3-11+.dmg">下載</a>
+          </div>
+          <div class="tier">
+            <span>Mac OS 10.15</span>
+            <a href="https://github.com/beethoreven/zh-cn-to-tw-mac/releases/download/v2.3-10-15/ZhCnToTw-2.3-10.15.dmg">下載</a>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section>
