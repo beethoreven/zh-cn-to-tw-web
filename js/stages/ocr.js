@@ -20,12 +20,25 @@ function desktopOcrBase() {
 // 一定要等：殼啟動 process、process 綁好 port、port 再被推回這個頁面，
 // 整串是非同步的。這裡等的是 /health 真的回應，不是只等 port 出現——
 // port 是 process 一綁好就印出來的，那時候 Flask 不見得已經開始接受連線。
-async function ensureDesktopOcrReady(timeoutMs) {
-  const limit = timeoutMs || 30000;
+//
+// 裝好之後第一次啟動很慢：系統會先逐一檢查服務內嵌的上百個執行檔與函式庫
+// （Mac 實測 49～79 秒，之後不到 2 秒）。殼那邊每次最多等 180 秒、重試一次，
+// 這裡的上限要比殼的兩次加起來長，不然殼還在等、這裡先放棄了。等超過
+// 15 秒就告訴使用者這是第一次啟動的正常現象，不要讓人以為當掉了。
+const OCR_STARTUP_LIMIT_MS = 400000;
+const OCR_STARTUP_SLOW_NOTICE_MS = 15000;
+
+async function ensureDesktopOcrReady(onSlow) {
   postToShell("ocrService", { action: "start" });
 
-  const deadline = Date.now() + limit;
+  const started = Date.now();
+  const deadline = started + OCR_STARTUP_LIMIT_MS;
+  let slowNoticeShown = false;
   while (Date.now() < deadline) {
+    if (!slowNoticeShown && onSlow && Date.now() - started > OCR_STARTUP_SLOW_NOTICE_MS) {
+      slowNoticeShown = true;
+      onSlow();
+    }
     const base = desktopOcrBase();
     if (base) {
       try {
@@ -193,7 +206,9 @@ export async function runLocalOcr(file, options, hooks) {
   // 服務平常是關著的，這裡請殼把它拉起來並等到真的可以用。不管後面成功
   // 還是失敗，finally 都會把它關掉，記憶體不會一直佔著。
   try {
-    const ocrBase = await ensureDesktopOcrReady();
+    const ocrBase = await ensureDesktopOcrReady(() =>
+      hooks.onStatus("啟動本機 OCR 服務（第一次使用需要比較久，可能要一兩分鐘，請稍候）")
+    );
     hooks.onStatus("本機 OCR 辨識中");
     const formData = new FormData();
     formData.append("file", file);
