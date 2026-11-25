@@ -80,7 +80,12 @@ async function checkAuthStatus() {
   try {
     const res = await fetch(`${API_BASE}/auth/status`, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
-    console.log("[auth] /auth/status →", res.status, data);
+    // 不印 email：10.15 那包把網頁的 console 輸出寫進使用者電腦上的 log 檔，
+    // 遠端排查時會請使用者把那個檔案傳過來，診斷只需要授權結果
+    console.log("[auth] /auth/status →", res.status, {
+      authorized: !!data.authorized,
+      is_admin: !!data.is_admin,
+    });
     if (res.status === 200) {
       state.authorized = !!data.authorized;
       state.isAdmin = !!data.is_admin;
