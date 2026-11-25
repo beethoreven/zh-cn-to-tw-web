@@ -7,6 +7,12 @@ import {
   DESKTOP_OS_TIER,
 } from "./config.js";
 
+// 強制更新時請使用者去下載新版的地方。刻意寫死在這裡、跟 App 一起打包，不用
+// 後端回傳的 update_url：網址由伺服器決定的話，後端被入侵或資料被竄改時，
+// 這個由 App 自己跳出來、使用者最容易相信的提示，就能把人導去假的下載頁、
+// 下載被換過的安裝檔。後端仍然回傳 update_url，給還沒更新的舊版用。
+const DOWNLOAD_PAGE_URL = "https://beethoreven.github.io/zh-cn-to-tw-web/";
+
 // 在真的要開始任何一個 Stage 之前檢查有沒有被要求強制更新。回傳 true 代表可以繼續，
 // false 代表被擋下來，呼叫端要直接 return。查詢本身失敗（網路問題、
 // backend 還在冷啟動）視為不擋：查不到版本狀態不該變成擋住使用者工作的
@@ -17,12 +23,6 @@ import {
 // os=macos&os_version=windows（當年 os 寫死成 macos，os_version 刻意取一個
 // Mac 沒用到的值，避免被 Mac 的門檻擋下），那些舊版要靠 app_versions 裡
 // ('macos','windows') 那一列。
-// 強制更新時請使用者去下載新版的地方。刻意寫死在這裡、跟 App 一起打包，不用
-// 後端回傳的 update_url：網址由伺服器決定的話，後端被入侵或資料被竄改時，
-// 這個由 App 自己跳出來、使用者最容易相信的提示，就能把人導去假的下載頁、
-// 下載被換過的安裝檔。後端仍然回傳 update_url，給還沒更新的舊版用。
-const DOWNLOAD_PAGE_URL = "https://beethoreven.github.io/zh-cn-to-tw-web/";
-
 function versionCheckKey() {
   if (DESKTOP_OS_TIER === "windows") return { os: "windows", osVersion: "default" };
   return { os: "macos", osVersion: DESKTOP_OS_TIER };
