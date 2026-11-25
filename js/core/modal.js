@@ -115,17 +115,30 @@ export function showConfirmDialog(options) {
   const actions = document.createElement("div");
   actions.className = "modal-actions";
 
+  // Esc 與點背景都當成取消，跟一般對話框的習慣一致
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKeydown);
+  };
+  const onKeydown = (e) => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKeydown);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.textContent = "取消";
-  cancelBtn.addEventListener("click", () => overlay.remove());
+  cancelBtn.addEventListener("click", close);
   actions.appendChild(cancelBtn);
 
   const confirmBtn = document.createElement("button");
   confirmBtn.type = "button";
   confirmBtn.textContent = options.confirmLabel;
   confirmBtn.addEventListener("click", () => {
-    overlay.remove();
+    close();
     options.onConfirm();
   });
   actions.appendChild(confirmBtn);
