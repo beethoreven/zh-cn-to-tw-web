@@ -93,3 +93,44 @@ export function showReauthFailedDialog(options) {
   document.body.appendChild(overlay);
   return () => overlay.remove();
 }
+
+// 需要使用者再確認一次的操作（例如「登出所有裝置」）。不用瀏覽器內建的
+// confirm()：WKWebView 要殼另外實作 UI delegate 才會顯示，沒實作的話會
+// 直接回 false，按鈕看起來就像壞掉。
+export function showConfirmDialog(options) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+
+  const box = document.createElement("div");
+  box.className = "modal-box";
+
+  const title = document.createElement("h3");
+  title.textContent = options.title;
+  box.appendChild(title);
+
+  const desc = document.createElement("p");
+  desc.textContent = options.message;
+  box.appendChild(desc);
+
+  const actions = document.createElement("div");
+  actions.className = "modal-actions";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.textContent = "取消";
+  cancelBtn.addEventListener("click", () => overlay.remove());
+  actions.appendChild(cancelBtn);
+
+  const confirmBtn = document.createElement("button");
+  confirmBtn.type = "button";
+  confirmBtn.textContent = options.confirmLabel;
+  confirmBtn.addEventListener("click", () => {
+    overlay.remove();
+    options.onConfirm();
+  });
+  actions.appendChild(confirmBtn);
+
+  box.appendChild(actions);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}

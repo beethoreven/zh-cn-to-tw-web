@@ -22,6 +22,7 @@ import {
 import { exposeToShell, postToShell } from "../core/bridge.js";
 import { byId } from "../core/dom.js";
 import { emit } from "../core/events.js";
+import { showConfirmDialog } from "../core/modal.js";
 import { hideConnectionNotice, showConnectionNotice, showToast } from "../core/toast.js";
 import { state } from "../app/state.js";
 import { refreshLockStates } from "../app/workflow.js";
@@ -37,6 +38,7 @@ const accountSlotEl = byId("account-slot");
 const accountLabelEl = byId("account-label");
 const accountDropdownEl = byId("account-dropdown");
 const btnSignOut = byId("btn-sign-out");
+const btnSignOutAll = byId("btn-sign-out-all");
 
 export function setPageLocked(locked) {
   mainColumnEl.classList.toggle("page-locked", locked);
@@ -179,6 +181,22 @@ function initGoogleSignIn() {
   }
 }
 
+// 跟一般登出不同，這裡要等後端回應：這是使用者察覺帳號可能外洩時用的，
+// 後端沒有真的撤銷成功的話一定要讓使用者知道，不能看起來像成功了。
+// 401 代表這個 token 本來就已經失效，對這一台來說結果相同，照樣登出。
+async function signOutEverywhere() {
+  try {
+    const res = await fetch(`${API_BASE}/auth/logout-all`, { method: "POST", headers: authHeaders() });
+    if (res.status !== 200 && res.status !== 401) throw new Error(`HTTP ${res.status}`);
+  } catch (err) {
+    console.error("[auth] 登出所有裝置失敗：", err);
+    showToast("登出所有裝置失敗，其他裝置的登入仍然有效，請稍後再試", "error");
+    return;
+  }
+  showSignedOutUI();
+  showToast("已登出所有裝置", "success");
+}
+
 export function initLogin() {
   exposeToShell("handleCredentialResponse", handleCredentialResponse);
   // 殼的系統瀏覽器登入失敗時呼叫（兩個殼都有），見 js/core/api.js
@@ -199,6 +217,17 @@ export function initLogin() {
     // 失敗（例如網路問題）也不該擋住使用者登出。
     fetch(`${API_BASE}/auth/logout`, { method: "POST", headers: authHeaders() }).catch(() => {});
     showSignedOutUI();
+  });
+
+  btnSignOutAll.addEventListener("click", (e) => {
+    e.stopPropagation();
+    accountDropdownEl.hidden = true;
+    showConfirmDialog({
+      title: "登出所有裝置",
+      message: "這個帳號在每一台電腦上的登入都會失效，包含這一台。進行中的工作會在下次存取時要求重新登入。",
+      confirmLabel: "全部登出",
+      onConfirm: signOutEverywhere,
+    });
   });
 
   initGoogleSignIn();
