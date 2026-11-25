@@ -19,7 +19,7 @@ Vanilla JavaScript（無框架、無建置流程），被桌面殼內嵌載入�
 
 處理流程分成三個 Stage（2.0 起；1.x 只有兩個，1.x 的 Stage 2 就是現在的 Stage 3）：
 
-- **Stage 1 繁化**：PDF 在使用者本機 OCR，OCR 完的文字送後端做簡轉繁與 LLM 潤飾。
+- **Stage 1 繁化**：PDF 在使用者本機 OCR，OCR 完的文字送後端做簡轉繁與 LLM 前置處理（移除頁碼與標頭、接合斷句、全形標點與引號）。原本還有讓 LLM 修正 OCR 錯字的「進行LLM潤飾」開關，已經拿掉，錯字交給 Stage 3 校對逐條決定。
 - **Stage 2 通用修改（2.0 新增）**：套用範本修改——後端用程式把半形標點轉全形、套用「修改前 → 修改後」的替換範本（半形空格一律不動），產出修改報告；可選擇請 LLM 看過字詞類的修改、提醒可能改錯的地方（只提醒、不改字）。
 - **Stage 3 校對**：LLM 挑出錯字／用詞問題，使用者勾選要套用的建議。
 
@@ -42,11 +42,11 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 **收合只是視覺上的差異**：卡片預設是收起來的。收起來時內容原封不動留在畫面裡，打開就看得到；只有重新整理、開始新的工作或換了劇本案才會清掉。流程自動接續到下一個 Stage 時，會收起前面做完的卡片、捲到正在跑的那張；使用者自己按「開始」時不捲動——人就在那張卡片上，捲動反而會把剛出現的進度區捲離畫面（實測撞過）。
 
-**流程進度條**：三個圓用一條線串起來，每個圓有六種狀態：還沒開始、等等會執行、執行中、這次不執行、已完成、失敗或中斷。「等等會執行／這次不執行」是從接續設定算出來的：Stage 1 的「完成後自動接續執行」選單（不接／接 Stage 2／接 Stage 3／一路執行完所有 Stage），以及 Stage 2 的「接續 Stage 3 校對」開關。「一路執行完所有 Stage」依序跑 1 → 2 → 3，不看 Stage 2 的開關。Stage 1 的「進行前置處理」與「進行LLM潤飾」都關閉時，這次流程後面一律不用 LLM：選單只能選「不接／接 Stage 2」（原本選接 Stage 3 或一路執行完的，自動改成接 Stage 2），Stage 2 不做分析報告、也不接 Stage 3。這張排程（`app/workflow.js` 的 `planFrom`）是「接下去跑哪個 Stage」唯一的依據，`app/chain.js` 只看排出來的結果，不自己再判斷一次開關。流程跑到一半改了接續設定，還沒開始的 Stage 會跟著更新。
+**流程進度條**：三個圓用一條線串起來，每個圓有六種狀態：還沒開始、等等會執行、執行中、這次不執行、已完成、失敗或中斷。「等等會執行／這次不執行」是從接續設定算出來的：Stage 1 的「完成後自動接續執行」選單（不接／接 Stage 2／接 Stage 3／一路執行完所有 Stage），以及 Stage 2 的「接續 Stage 3 校對」開關。「一路執行完所有 Stage」依序跑 1 → 2 → 3，不看 Stage 2 的開關。Stage 1 的「進行前置處理」關閉時，這次流程後面一律不用 LLM：選單只能選「不接／接 Stage 2」（原本選接 Stage 3 或一路執行完的，自動改成接 Stage 2），Stage 2 不做分析報告、也不接 Stage 3。這張排程（`app/workflow.js` 的 `planFrom`）是「接下去跑哪個 Stage」唯一的依據，`app/chain.js` 只看排出來的結果，不自己再判斷一次開關。流程跑到一半改了接續設定，還沒開始的 Stage 會跟著更新。
 
 **鎖定規則**：「開始」類按鈕在任何工作進行中都鎖住；後面 Stage 的設定在前面 Stage 跑的時候仍然可以改（等等自動接續時會用到），輪到自己跑才鎖——唯一的例外是下面說的 model 選單。直接上傳檔案的那一兩秒也算「處理中」——不然上傳完成時清掉其他 Stage 的動作，會把剛按下開始的工作清掉，畫面卡在「執行中」。
 
-**接續時用哪個 model**：流程是從 Stage 1 開始的，接下去用到 LLM 的地方——Stage 2 的分析報告、Stage 3 校對——一律沿用 Stage 1 選的 model（Stage 3 是 1.x「直接進行校對」的既有行為，Stage 2 比照）。這段期間 Stage 2、Stage 3 的 model 選單會直接顯示那個 model 並鎖住，下面標示「沿用 Stage 1 選的 Model」，不讓人以為改那裡有用；Stage 1 的 model 欄位只有在「進行前置處理」與「進行LLM潤飾」都關閉時才鎖（這時後面也不會用到 LLM，見上面）。從 Stage 2 開始的，用各 Stage 自己的設定。輸出格式（txt／docx）跟著前一個 Stage：從 Stage 1 開始的流程，Stage 2 沿用 Stage 1 的，Stage 3 再沿用 Stage 2 的，等於一路都是 Stage 1 的設定。
+**接續時用哪個 model**：流程是從 Stage 1 開始的，接下去用到 LLM 的地方——Stage 2 的分析報告、Stage 3 校對——一律沿用 Stage 1 選的 model（Stage 3 是 1.x「直接進行校對」的既有行為，Stage 2 比照）。這段期間 Stage 2、Stage 3 的 model 選單會直接顯示那個 model 並鎖住，下面標示「沿用 Stage 1 選的 Model」，不讓人以為改那裡有用；Stage 1 的 model 欄位只有在「進行前置處理」關閉時才鎖（這時後面也不會用到 LLM，見上面）。從 Stage 2 開始的，用各 Stage 自己的設定。輸出格式（txt／docx）跟著前一個 Stage：從 Stage 1 開始的流程，Stage 2 沿用 Stage 1 的，Stage 3 再沿用 Stage 2 的，等於一路都是 Stage 1 的設定。
 
 **劇本案**：有工作在進行時（任何 Stage 在跑、分析報告還在背景跑，或流程還有排定要接續的 Stage）劇本案選單會鎖住——跑到一半換劇本案，後面接續的 Stage 會用新的劇本案送出，用量就記錯案子。真的換了另一個劇本案，三個 Stage 的進度全部清掉、卡片收回去；選同一個再按一次「確定」不清，避免誤按把還沒下載的結果清掉。
 
@@ -92,7 +92,7 @@ zh-cn-to-tw/                     ← meta-repo，本機開發統一入口，本�
 
 這是一段來回修正的過程，值得記錄：
 
-**最早的設計**：桌面殼啟動時就把 `zh-cn-to-tw-ocr-service` 拉起來，整個 App 執行期間一直開著。問題是 PaddleOCR 模型載入後常駐佔用實測 **393MB** 記憶體，而它只在 Stage 1 的 OCR 那一步用得到，其他時候（潤飾、Stage 2、Stage 3、下載、登入）完全沒事做，白白佔著。
+**最早的設計**：桌面殼啟動時就把 `zh-cn-to-tw-ocr-service` 拉起來，整個 App 執行期間一直開著。問題是 PaddleOCR 模型載入後常駐佔用實測 **393MB** 記憶體，而它只在 Stage 1 的 OCR 那一步用得到，其他時候（前置處理、Stage 2、Stage 3、下載、登入）完全沒事做，白白佔著。
 
 **中間的補丁**：加了「閒置 30 分鐘自我關閉」，但同時又有「健康檢查每 30 秒發現服務沒在跑就重新拉起」——這兩個機制互相打架，關掉沒多久又被拉起來，記憶體從沒真的被回收過，而且每次重啟都換一個新 port。
 
@@ -254,7 +254,7 @@ Vanilla JavaScript (no framework, no build step), embedded by the desktop shells
 
 Processing runs in three Stages (from 2.0; 1.x had two, and 1.x's Stage 2 is today's Stage 3):
 
-- **Stage 1 Convert**: the PDF is OCR'd on the user's own machine, and the OCR'd text goes to the backend for Simplified-to-Traditional conversion and LLM polish.
+- **Stage 1 Convert**: the PDF is OCR'd on the user's own machine, and the OCR'd text goes to the backend for Simplified-to-Traditional conversion and LLM preprocessing (removing page numbers and headers, joining broken lines, full-width punctuation and quotes). There used to be an "LLM polish" switch that had the LLM fix OCR typos; it was removed, and typos are left to Stage 3 proofreading, decided one by one.
 - **Stage 2 General Edits (new in 2.0)**: Apply Template — the backend, in plain code, converts half-width punctuation to full-width and applies a "before → after" replacement template (half-width spaces are never touched), and produces an edit report; optionally, an LLM looks over the word-level edits and flags ones that may be wrong (it only flags; it never changes text).
 - **Stage 3 Proofread**: an LLM picks out typos/wording problems, and the user ticks the suggestions to apply.
 
@@ -277,11 +277,11 @@ Once Stage 2 was added, the old horizontal layout ("Stage 1 and Stage 2 side by 
 
 **Collapsing is purely visual**: cards start collapsed. A collapsed card keeps its content on the page untouched, and opening it shows everything again; content is only cleared by reloading, starting a new job, or switching to another script project. When the flow automatically chains into the next Stage, the finished cards above it collapse and the page scrolls to the running one; when the user presses "start" themselves, it does not scroll — the user is already on that card, and scrolling would push the freshly-shown progress area off screen (hit in practice).
 
-**The stepper**: three circles joined by a line, each in one of six states: not started, will run, running, won't run this time, done, failed or interrupted. "Will run / won't run this time" is computed from the chaining settings: Stage 1's "continue automatically after finishing" select (none / Stage 2 / Stage 3 / run all Stages) and Stage 2's "continue to Stage 3 proofreading" switch. "Run all Stages" runs 1 → 2 → 3 in order and ignores Stage 2's switch. When both of Stage 1's "preprocessing" and "LLM polish" are off, nothing later in that flow uses an LLM: the select only offers "none / Stage 2" (a previous choice of Stage 3 or run-all switches to Stage 2), and Stage 2 neither runs the analysis report nor continues to Stage 3. This plan (`planFrom` in `app/workflow.js`) is the only source of truth for which Stage runs next; `app/chain.js` just follows the planned Stages and never re-checks the switches itself. Changing a chaining setting mid-flow updates the Stages that haven't started yet.
+**The stepper**: three circles joined by a line, each in one of six states: not started, will run, running, won't run this time, done, failed or interrupted. "Will run / won't run this time" is computed from the chaining settings: Stage 1's "continue automatically after finishing" select (none / Stage 2 / Stage 3 / run all Stages) and Stage 2's "continue to Stage 3 proofreading" switch. "Run all Stages" runs 1 → 2 → 3 in order and ignores Stage 2's switch. When Stage 1's "preprocessing" is off, nothing later in that flow uses an LLM: the select only offers "none / Stage 2" (a previous choice of Stage 3 or run-all switches to Stage 2), and Stage 2 neither runs the analysis report nor continues to Stage 3. This plan (`planFrom` in `app/workflow.js`) is the only source of truth for which Stage runs next; `app/chain.js` just follows the planned Stages and never re-checks the switches itself. Changing a chaining setting mid-flow updates the Stages that haven't started yet.
 
 **Locking rules**: "start"-type buttons are locked while any job is running; a later Stage's settings stay editable while an earlier Stage runs (they'll be used when the flow chains into it), and lock only when that Stage itself runs — the one exception is the model select described below. The second or two of a direct file upload also counts as "processing" — otherwise the upload's completion, which clears the other Stages, would wipe out a job that had just been started, leaving the screen stuck on "running".
 
-**Which model is used when chaining**: if the flow started at Stage 1, everything downstream that calls an LLM — Stage 2's analysis report and Stage 3 proofreading — uses Stage 1's model (for Stage 3 this is the existing 1.x "proofread directly" behavior; Stage 2 follows suit). Meanwhile the Stage 2 and Stage 3 model selects show that model, locked, with a note "沿用 Stage 1 選的 Model" (using Stage 1's model) underneath, so nobody thinks changing them would matter; Stage 1's own model field is locked only when both "preprocessing" and "LLM polish" are off (nothing later uses an LLM then, see above). If the flow started at Stage 2, each Stage uses its own setting. The output format (txt/docx) follows the previous Stage: in a flow started at Stage 1, Stage 2 takes Stage 1's and Stage 3 takes Stage 2's, so it's Stage 1's setting all the way.
+**Which model is used when chaining**: if the flow started at Stage 1, everything downstream that calls an LLM — Stage 2's analysis report and Stage 3 proofreading — uses Stage 1's model (for Stage 3 this is the existing 1.x "proofread directly" behavior; Stage 2 follows suit). Meanwhile the Stage 2 and Stage 3 model selects show that model, locked, with a note "沿用 Stage 1 選的 Model" (using Stage 1's model) underneath, so nobody thinks changing them would matter; Stage 1's own model field is locked only when "preprocessing" is off (nothing later uses an LLM then, see above). If the flow started at Stage 2, each Stage uses its own setting. The output format (txt/docx) follows the previous Stage: in a flow started at Stage 1, Stage 2 takes Stage 1's and Stage 3 takes Stage 2's, so it's Stage 1's setting all the way.
 
 **Script projects**: while work is in progress (any Stage running, an analysis report still running in the background, or Stages still planned in the current flow) the script-project picker is locked — switching projects mid-flow would make the chained Stages submit under the new project and bill usage to the wrong one. Actually switching to another project clears all three Stages and collapses the cards; confirming the same project again clears nothing, so a stray click can't wipe results that haven't been downloaded yet.
 
@@ -327,7 +327,7 @@ Both desktop shells build by copying `main`'s files from this repo's local worki
 
 This went through a back-and-forth worth recording:
 
-**Original design**: the desktop shell started `zh-cn-to-tw-ocr-service` at app launch and kept it running for the entire session. Problem: once PaddleOCR's models load, they sit at a measured **393MB** resident, but the service is only actually useful during Stage 1's OCR step — the rest of the time (polish, Stage 2, Stage 3, download, login) it does nothing at all.
+**Original design**: the desktop shell started `zh-cn-to-tw-ocr-service` at app launch and kept it running for the entire session. Problem: once PaddleOCR's models load, they sit at a measured **393MB** resident, but the service is only actually useful during Stage 1's OCR step — the rest of the time (preprocessing, Stage 2, Stage 3, download, login) it does nothing at all.
 
 **Interim patch**: added a "self-shutdown after 30 minutes idle," but also had "a health check every 30 seconds that respawns the service if it's not running" — the two mechanisms fought each other, so the service kept getting respawned shortly after shutting down, memory was never actually reclaimed, and every respawn came with a new port.
 

@@ -148,7 +148,7 @@
   opacity: 0.5;
 }
 
-/* 個別欄位的鎖定（例如「進行LLM潤飾」關掉時的 Model 欄位）跟整組的
+/* 個別欄位的鎖定（例如「進行前置處理」關掉時的 Model 欄位）跟整組的
    .form-group.locked 是疊加關係，不是取代它，所以做成獨立的 class */
 .field.locked {
   opacity: 0.5;

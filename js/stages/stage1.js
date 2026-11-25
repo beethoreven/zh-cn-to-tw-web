@@ -1,5 +1,5 @@
 // Stage 1：簡轉繁。PDF 在本機 OCR（js/stages/ocr.js），文字送到後端做
-// OpenCC 簡轉繁與（選配的）LLM 前置處理／潤飾，前端輪詢進度。
+// OpenCC 簡轉繁與（選配的）LLM 前置處理，前端輪詢進度。
 
 import { API_BASE, DESKTOP_OS_TIER, PERSONAL_PROJECT_ERROR_MESSAGES } from "../core/config.js";
 import { authedFetch, errorFromResponse, isReauthInFlight } from "../core/api.js";
@@ -41,7 +41,6 @@ const chainSelect = byId("stage1-chain-select");
 const detectCoverToggle = byId("detect-cover-toggle");
 const splitLeftRightToggle = byId("split-left-right-toggle");
 const preprocessToggle = byId("preprocess-toggle");
-const llmRefineToggle = byId("llm-refine-toggle");
 const modelSelect = byId("model-select");
 const modelField = byId("model-field");
 const batchSelect = byId("batch-select");
@@ -99,10 +98,10 @@ export async function loadStage1Options() {
   dpiHelp.textContent = opts.dpi.description;
 }
 
-// 這次 Stage 1 會不會呼叫 LLM：「進行前置處理」與「進行LLM潤飾」兩個都關，
-// Stage 1 就全程只做 OpenCC 簡轉繁。
+// 這次 Stage 1 會不會呼叫 LLM：「進行前置處理」關掉，Stage 1 就全程只做
+// OpenCC 簡轉繁。
 function stage1UsesLlm() {
-  return llmRefineToggle.checked || preprocessToggle.checked;
+  return preprocessToggle.checked;
 }
 
 // 會接到 Stage 3（需要 LLM）的接續選項
@@ -158,7 +157,6 @@ function applyLock(s) {
       detectCoverToggle,
       splitLeftRightToggle,
       preprocessToggle,
-      llmRefineToggle,
       docxToggle,
       submitBtn,
     ],
@@ -360,7 +358,6 @@ async function submit() {
         batch_pages: batchSelect.value,
         max_retry: retryInput.value,
         enable_preprocess: preprocessToggle.checked,
-        enable_llm_refine: llmRefineToggle.checked,
         file_name: file.name,
         project: state.currentProjectId,
       }),
@@ -384,7 +381,7 @@ async function submit() {
 
 export function initStage1() {
   registerLock(applyLock);
-  [preprocessToggle, llmRefineToggle].forEach((el) => el.addEventListener("change", updateLlmDependentLock));
+  preprocessToggle.addEventListener("change", updateLlmDependentLock);
 
   submitBtn.addEventListener("click", submit);
   downloadBtn.addEventListener("click", async () => {

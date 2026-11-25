@@ -64,7 +64,7 @@
 
   <main class="container" id="main-view">
     <h1>劇本殺繁化助手</h1>
-    <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 潤飾</p>
+    <p class="subtitle">上傳簡體中文 PDF 劇本，自動 OCR + 簡轉繁 + 前置處理</p>
 
     <!-- 連線狀態提示。刻意放在 .page-layout 外面：頁面鎖住時
          .main-column 會被套上 .page-locked（opacity 0.4），提示如果放在
@@ -209,23 +209,6 @@
                 <p class="field-help">移除頁碼與標頭，接合斷句，全形標點符號，整理上下引號。</p>
               </div>
 
-              <div class="field">
-                <label class="switch-row" for="llm-refine-toggle">
-                  <span>進行LLM潤飾</span>
-                  <span class="switch-with-label">
-                    <span class="switch-label-text">off</span>
-                    <span class="switch">
-                      <input type="checkbox" id="llm-refine-toggle" />
-                      <span class="switch-track"></span>
-                    </span>
-                    <span class="switch-label-text">on</span>
-                  </span>
-                </label>
-                <p class="field-help">
-                  LLM潤飾可修正OCR錯字，但有改寫內容或刪除段落的風險。如果關閉，Model仍會用在前置處理，以及接續的 Stage 2 分析報告、Stage 3 校對。
-                </p>
-              </div>
-
               <div class="field" id="model-field">
                 <label for="model-select">Model</label>
                 <select id="model-select"></select>
@@ -259,7 +242,7 @@
                   <option value="all">一路執行完所有 Stage</option>
                 </select>
                 <p class="field-help">
-                  接下去的 Stage 2 分析報告、Stage 3 校對都沿用這裡選的 Model，輸出格式也沿用這裡的設定。「一路執行完所有 Stage」會依序跑完 Stage 2、Stage 3，不看 Stage 2 的「接續 Stage 3 校對」開關。「進行前置處理」與「進行LLM潤飾」都關閉時，只能接 Stage 2，而且不做分析報告。
+                  接下去的 Stage 2 分析報告、Stage 3 校對都沿用這裡選的 Model，輸出格式也沿用這裡的設定。「一路執行完所有 Stage」會依序跑完 Stage 2、Stage 3，不看 Stage 2 的「接續 Stage 3 校對」開關。「進行前置處理」關閉時，只能接 Stage 2，而且不做分析報告。
                 </p>
               </div>
 

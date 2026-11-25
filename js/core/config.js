@@ -58,7 +58,7 @@ export const API_BASE = resolveApiBase(params.get("apiBase"));
 // 桌面殼（zh-cn-to-tw-mac / zh-cn-to-tw-windows）載入這個網頁時會在網址帶
 // ?desktop=1&ocrToken=<殼啟動時產生的隨機值>&apiBase=...&appMajor=...&appMinor=...
 // &osTier=...。有 desktop=1 時，Stage 1 的 PDF 先在本機做 OCR（見
-// js/stages/ocr.js），再把文字送給 Render 後端潤飾。
+// js/stages/ocr.js），再把文字送給 Render 後端做簡轉繁與前置處理。
 export const DESKTOP_MODE = params.get("desktop") === "1";
 export const DESKTOP_OCR_TOKEN = params.get("ocrToken") || "";
 // 桌面殼自己的版本號，只有 major/minor 兩碼，跟後端 GET /api/version_check

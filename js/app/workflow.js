@@ -116,7 +116,7 @@ export function usesStage1Model(stage) {
 }
 
 // 這次流程從 Stage 1 開始，而且 Stage 1 完全沒有用到 LLM（「進行前置處理」
-// 與「進行LLM潤飾」都關）。這種流程後面一律不用 LLM：只會接 Stage 2，而且
+// 關閉）。這種流程後面一律不用 LLM：只會接 Stage 2，而且
 // Stage 2 不做分析報告、不接 Stage 3（見 planFrom）。在 Stage 1 開始時就記下
 // 來，不看事後畫面上的開關。
 export function runSkipsLlm() {

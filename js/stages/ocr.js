@@ -216,7 +216,7 @@ export async function runLocalOcr(file, options, hooks) {
     return { pages: job.pages, possibleMissing: job.possible_missing || [] };
   } finally {
     // OCR 這一步已經結束，結果也已經在手上了，服務沒有存在的必要。後面
-    // 把文字送去 Render 潤飾那段完全不需要它。
+    // 把文字送去 Render 處理那段完全不需要它。
     releaseDesktopOcr();
   }
 }
