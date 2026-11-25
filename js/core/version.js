@@ -19,10 +19,8 @@ const DOWNLOAD_PAGE_URL = "https://beethoreven.github.io/zh-cn-to-tw-web/";
 // 理由，這個檢查只在明確查到「版本太舊」時才生效。
 //
 // 查哪一列門檻：Mac 送 os=macos、os_version=分流（11+／10.15）；Windows 沒有
-// 分流，送 os=windows、os_version=default。1.x～2.0 的 Windows 殼送的是
-// os=macos&os_version=windows（當年 os 寫死成 macos，os_version 刻意取一個
-// Mac 沒用到的值，避免被 Mac 的門檻擋下），那些舊版要靠 app_versions 裡
-// ('macos','windows') 那一列。
+// 分流，送 os=windows、os_version=default。後端只認門檻表裡有的組合，送錯
+// 的一律被要求更新，所以這裡送的值要跟表裡的資料列一致。
 function versionCheckKey() {
   if (DESKTOP_OS_TIER === "windows") return { os: "windows", osVersion: "default" };
   return { os: "macos", osVersion: DESKTOP_OS_TIER };
