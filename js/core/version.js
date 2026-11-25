@@ -17,6 +17,12 @@ import {
 // os=macos&os_version=windows（當年 os 寫死成 macos，os_version 刻意取一個
 // Mac 沒用到的值，避免被 Mac 的門檻擋下），那些舊版要靠 app_versions 裡
 // ('macos','windows') 那一列。
+// 強制更新時請使用者去下載新版的地方。刻意寫死在這裡、跟 App 一起打包，不用
+// 後端回傳的 update_url：網址由伺服器決定的話，後端被入侵或資料被竄改時，
+// 這個由 App 自己跳出來、使用者最容易相信的提示，就能把人導去假的下載頁、
+// 下載被換過的安裝檔。後端仍然回傳 update_url，給還沒更新的舊版用。
+const DOWNLOAD_PAGE_URL = "https://beethoreven.github.io/zh-cn-to-tw-web/";
+
 function versionCheckKey() {
   if (DESKTOP_OS_TIER === "windows") return { os: "windows", osVersion: "default" };
   return { os: "macos", osVersion: DESKTOP_OS_TIER };
@@ -36,7 +42,7 @@ export async function checkVersionOrBlock() {
   }
   if (!data.force_update) return true;
   alert(
-    `目前 App 版本過舊（最低需求版本 ${data.min_version}），請先更新才能繼續使用。\n\n請至以下網址下載最新版本：\n${data.update_url}`
+    `目前 App 版本過舊（最低需求版本 ${data.min_version}），請先更新才能繼續使用。\n\n請至以下網址下載最新版本：\n${DOWNLOAD_PAGE_URL}`
   );
   return false;
 }
